@@ -211,6 +211,37 @@ expiring. So "what have we actually spent credits on" is just a query:
 sqlite3 data/newsidx.db "SELECT fetched_at, url FROM api_cache ORDER BY fetched_at DESC LIMIT 10;"
 ```
 
+### Why a URL cache is not enough on its own
+
+`api_cache` keys on the exact URL, which covers the per-ticker calls completely: a corporate
+action does not change retroactively, so the second run reads them for free forever.
+
+It does nothing for the market-wide range calls, because those carry their dates in the URL.
+Yesterday bought `start=D-90&end=D`. Today asks for `start=D-89&end=D+1`, which is a URL
+nothing has ever seen, so all 91 days get bought again at full price. A dense window costs up
+to `PAGE_CAP` (12) credits per feed, three feeds per run, against a lifetime ceiling of 275.
+Roughly eight daily runs would have spent the entire project allowance on days already sitting
+in the database.
+
+So a `coverage` table records the date span each feed has actually been fetched for, and a run
+asks only for what is missing:
+
+```bash
+sqlite3 data/newsidx.db "SELECT feed, covered_from, covered_to FROM coverage;"
+```
+
+Two deliberate choices in that logic, both in `missingSpans()` and both tested:
+
+* **The last covered day is always re-fetched, never skipped.** A feed is still filling on its
+  own final day, so treating it as finished would leave a permanent hole in whatever got
+  published after the run. One extra day per run is the price of not having one.
+* **A requested window disjoint from what is covered is fetched whole.** Fetching just the two
+  ends and recording the union would claim the middle without ever having asked for it.
+
+The same applies to `--reports`, which is the expensive feed at roughly 32 pages for the full
+universe. It resumes from the last covered date rather than from a `since` that moves with the
+clock, so only the first sweep pays for the sweep.
+
 ### The finding that changed the design
 
 We started out intending to predict earnings dates. Then we read the endpoint properly.
@@ -342,6 +373,7 @@ itself to 275 across all runs. The ceiling lives in `config.ts` and is asserted 
 |---|---|
 | Market-wide range calls instead of per-ticker loops | one `/v2/filings/` page covers every listed company |
 | Per-ticker calls cached forever | corporate actions do not change retroactively, so the second run is free |
+| Range calls buy only the days not already covered | the dates live in the URL, so a rolling window would otherwise re-buy all 90 days daily. A repeat run asks for the tail day and stops |
 | `SHARED_CACHE_DIR` reads a sibling project's cache | anything it already bought costs nothing here |
 | The expected-drop number reuses closes the backfill already bought | the arithmetic is free on top of the price strip |
 | `?since=` polling on the report feed | a full sweep is about 32 pages, an incremental poll is one |

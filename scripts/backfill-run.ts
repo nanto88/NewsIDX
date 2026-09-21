@@ -1,8 +1,9 @@
 /**
  * The live run. plan.md §6: market-wide ranges first, then a bounded
  * per-ticker fill for the watchlist, then stop. Safe to run daily -- the
- * per-ticker calls are cached forever and the range calls only re-fetch dates
- * they have not seen.
+ * per-ticker calls are cached forever, and the range calls ask only for the
+ * days `coverage` says are missing, plus the last covered day -- a feed is
+ * still filling on its own final day, so that one is never taken as final.
  *
  *   npm run backfill              # 90-day facts + watchlist fill
  *   npm run backfill -- --poll    # the cheap daily shape: facts since yesterday

@@ -15,7 +15,17 @@
 import type { Database } from "better-sqlite3";
 import type { Client } from "./api.js";
 import { BOARD_LIMIT, BOARD_MIN_MCAP, PAGE_CAP, PAGE_LIMIT } from "./config.js";
-import { type EventRow, touchTicker, tickerFetchedAt, upsertBoard, upsertEvents, upsertPrices } from "./db.js";
+import {
+  type EventRow,
+  getCoverage,
+  markCoverage,
+  type Span,
+  touchTicker,
+  tickerFetchedAt,
+  upsertBoard,
+  upsertEvents,
+  upsertPrices,
+} from "./db.js";
 import { shift, today as todayIso, year } from "./dates.js";
 
 const bare = (s: string | undefined | null): string => String(s ?? "").toUpperCase().replace(/\.JK$/, "");
@@ -90,6 +100,71 @@ async function pagedRange(
   return { rows, coveredFrom, truncated: coveredFrom > from };
 }
 
+// ---------------------------------------------------------------- incremental ranges
+
+/**
+ * Which slices of [from,to] are not already covered.
+ *
+ * Range endpoints carry their dates in the URL, so `api_cache` cannot help a
+ * rolling window: yesterday bought `start=D-90&end=D`, today asks for
+ * `start=D-89&end=D+1`, and every one of those 91 days is re-bought at full
+ * price. Comparing against what the feed has actually been fetched for turns a
+ * daily run into the two or three days that are genuinely new.
+ *
+ * Two deliberate choices:
+ *
+ *   - The covered end date is ALWAYS re-fetched rather than skipped. A feed is
+ *     still filling on its own last day, so treating that day as final would
+ *     leave a permanent hole in whatever was published after the run.
+ *   - A requested window disjoint from what is covered is fetched whole. The
+ *     alternative is to fetch the ends and claim the middle, which is how a
+ *     gap becomes invisible.
+ */
+export function missingSpans(covered: Span | null, from: string, to: string): [string, string][] {
+  if (to < from) return [];
+  if (!covered) return [[from, to]];
+  if (covered.to < shift(from, -1) || covered.from > shift(to, 1)) return [[from, to]];
+
+  const spans: [string, string][] = [];
+  if (from < covered.from) spans.push([from, shift(covered.from, -1)]);
+  if (to >= covered.to) spans.push([covered.to, to]);
+  return spans;
+}
+
+/**
+ * One market-wide feed over [from,to], buying only the days it is missing.
+ *
+ * Returns the rows it actually fetched, which on a repeat run is none. That is
+ * correct rather than lossy: the events those rows produced are already in the
+ * database, and `upsertEvents` would only rewrite them identically.
+ */
+async function rangeFeed(
+  con: Database,
+  client: Client,
+  feed: string,
+  path: string,
+  from: string,
+  to: string
+): Promise<{ rows: any[]; truncated: boolean; coveredFrom: string }> {
+  const spans = missingSpans(getCoverage(con, feed), from, to);
+  const rows: any[] = [];
+  let truncated = false;
+  let coveredFrom = from;
+
+  for (const [a, b] of spans) {
+    const r = await pagedRange(client, path, a, b);
+    rows.push(...r.rows);
+    if (r.truncated) {
+      truncated = true;
+      if (r.coveredFrom > coveredFrom) coveredFrom = r.coveredFrom;
+    }
+    // Marked per span, not once at the end: a run stopped by the credit
+    // ceiling mid-sweep must still keep what it paid for.
+    markCoverage(con, feed, r.truncated ? r.coveredFrom : a, b);
+  }
+  return { rows, truncated, coveredFrom };
+}
+
 // ---------------------------------------------------------------- market-wide facts
 
 /** Insider filings, suspensions and news over [from,to]. Facts, every one with
@@ -104,7 +179,7 @@ export async function backfillFacts(
   const truncated: string[] = [];
   let coveredFrom = from;
 
-  const filings = await pagedRange(client, "/v2/filings/", from, to);
+  const filings = await rangeFeed(con, client, "filings", "/v2/filings/", from, to);
   if (filings.truncated) {
     truncated.push(`filings (complete back to ${filings.coveredFrom})`);
     if (filings.coveredFrom > coveredFrom) coveredFrom = filings.coveredFrom;
@@ -136,7 +211,7 @@ export async function backfillFacts(
     });
   }
 
-  const susp = await pagedRange(client, "/v2/suspensions/", from, to);
+  const susp = await rangeFeed(con, client, "suspensions", "/v2/suspensions/", from, to);
   if (susp.truncated) {
     truncated.push(`suspensions (complete back to ${susp.coveredFrom})`);
     if (susp.coveredFrom > coveredFrom) coveredFrom = susp.coveredFrom;
@@ -155,7 +230,7 @@ export async function backfillFacts(
     });
   }
 
-  const news = await pagedRange(client, "/v2/news/", from, to);
+  const news = await rangeFeed(con, client, "news", "/v2/news/", from, to);
   if (news.truncated) {
     truncated.push(`news (complete back to ${news.coveredFrom})`);
     if (news.coveredFrom > coveredFrom) coveredFrom = news.coveredFrom;
@@ -206,7 +281,15 @@ export async function pollReports(
   since: string,
   seenOn: string = todayIso()
 ): Promise<{ written: number; truncated: boolean }> {
-  const { rows, truncated } = await paged(client, "/v2/companies/quarterly-financial-dates/", { since });
+  // The expensive one: ~32 pages for the full ~950 companies. `since` goes in
+  // the URL, so a date that moves with the clock misses the cache and re-buys
+  // the whole sweep every run. Resume from where the feed was last read
+  // instead, and the second run costs a page or two.
+  const prior = getCoverage(con, "reports");
+  const effectiveSince = prior && prior.to > since ? prior.to : since;
+  const { rows, truncated } = await paged(client, "/v2/companies/quarterly-financial-dates/", {
+    since: effectiveSince,
+  });
   const events: EventRow[] = [];
   for (const r of rows) {
     const periodEnd = isoDate(r.date);
@@ -223,6 +306,9 @@ export async function pollReports(
     });
   }
   upsertEvents(con, events);
+  // A truncated sweep has not reached the far end, so it claims only the day
+  // it resumed from -- the next run picks the rest up rather than skipping it.
+  if (!truncated) markCoverage(con, "reports", effectiveSince, seenOn);
   // ~950 companies at 30 rows a credit: this feed is ~32 credits for a full
   // sweep, which is why backfill-run keeps it behind a flag.
   return { written: events.length, truncated };

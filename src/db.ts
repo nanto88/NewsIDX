@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { DB_PATH } from "./config.js";
+import { shift } from "./dates.js";
 
 export type EventClass = "fact" | "scheduled";
 
@@ -104,6 +105,16 @@ CREATE TABLE IF NOT EXISTS api_cache(
   fetched_at TEXT NOT NULL,
   body TEXT NOT NULL);
 
+-- What each market-wide feed has already been fetched for, as one contiguous
+-- date span. Range calls put the dates in the URL, so a rolling 90-day window
+-- produces a brand new URL every day and api_cache never hits -- the whole
+-- window would be re-bought daily. This table is what lets a run ask only for
+-- the days it is missing.
+CREATE TABLE IF NOT EXISTS coverage(
+  feed TEXT PRIMARY KEY,
+  covered_from TEXT NOT NULL,
+  covered_to TEXT NOT NULL);
+
 -- One row per run, with credits spent. This is what makes the credit line in
 -- the video honest, and it is where api.ts reads its lifetime total from.
 CREATE TABLE IF NOT EXISTS run(
@@ -131,6 +142,41 @@ export function connect(dbPath: string = DB_PATH): Database.Database {
     con.exec("ALTER TABLE faq ADD COLUMN summary TEXT");
   }
   return con;
+}
+
+// ---------------------------------------------------------------- coverage
+
+export interface Span {
+  from: string;
+  to: string;
+}
+
+/** What `feed` has already been fetched for, or null if it never has. */
+export function getCoverage(con: Database.Database, feed: string): Span | null {
+  const r = con.prepare(`SELECT covered_from f, covered_to t FROM coverage WHERE feed = ?`).get(feed) as any;
+  return r ? { from: r.f, to: r.t } : null;
+}
+
+/**
+ * Record that `feed` is now fetched over [from,to].
+ *
+ * Widens the stored span when the new one touches or overlaps it, and REPLACES
+ * it when the two are disjoint. Replacing loses the older span, which is the
+ * honest outcome: one contiguous interval cannot describe two with a hole
+ * between them, and claiming the hole is covered would silently skip those
+ * days forever.
+ */
+export function markCoverage(con: Database.Database, feed: string, from: string, to: string): Span {
+  const prior = getCoverage(con, feed);
+  const touches = prior && prior.to >= shift(from, -1) && prior.from <= shift(to, 1);
+  const next: Span = touches
+    ? { from: prior!.from < from ? prior!.from : from, to: prior!.to > to ? prior!.to : to }
+    : { from, to };
+  con.prepare(
+    `INSERT INTO coverage(feed,covered_from,covered_to) VALUES (?,?,?)
+     ON CONFLICT(feed) DO UPDATE SET covered_from=excluded.covered_from, covered_to=excluded.covered_to`
+  ).run(feed, next.from, next.to);
+  return next;
 }
 
 // ---------------------------------------------------------------- events
