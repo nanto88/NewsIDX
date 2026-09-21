@@ -11,7 +11,18 @@
  * render-blocking request. The only JavaScript on the page is the theme
  * toggle; every navigation is a real <a href>.
  */
-import { Cell, Day, Item, Pulse, Timeline, kindLabel, matchesTag, sentimentOf } from "./calendar.js";
+import {
+  Cell,
+  Day,
+  Item,
+  MAX_TAGS,
+  Pulse,
+  Timeline,
+  kindLabel,
+  matchesTag,
+  parseTags,
+  sentimentOf,
+} from "./calendar.js";
 import { type Attention, contributions } from "./attention.js";
 import type { Board, SectorBox, Tile } from "./heatmap.js";
 import type { AskRow, FaqRow } from "./db.js";
@@ -413,10 +424,12 @@ export const STYLE = `
   .tb .tag b{color:var(--text);font-weight:600}
   .tb .tag.hot{border-color:color-mix(in srgb,var(--primary) 35%,transparent);color:var(--primary-dark)}
   .tb .tag:hover{border-color:var(--border-strong);color:var(--text)}
-  .tb .tag[aria-current="true"]{border-color:var(--on);color:var(--on);
+  .tb .tag[aria-pressed="true"]{border-color:var(--on);color:var(--on);
            background:var(--on-wash)}
-  .tb .tag[aria-current="true"] b{color:var(--on)}
-  .tb .tag[aria-current="true"]:hover{border-color:var(--on);color:var(--on)}
+  .tb .tag[aria-pressed="true"] b{color:var(--on)}
+  .tb .tag[aria-pressed="true"]:hover{border-color:var(--on);color:var(--on)}
+  /* A tick, so a set of toggles does not read as a set of links. */
+  .tb .tag[aria-pressed="true"]::before{content:"✓ ";font-weight:700}
   .tb form{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
   .tb input{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);color:var(--text);
             border:1px solid var(--border);border-radius:999px;padding:6px 12px;min-width:200px;min-height:34px}
@@ -1147,6 +1160,20 @@ function watchlistBar(
  * off like everything else here. Every link anchors at #headlines, because the
  * list it narrows is further down the page.
  */
+/**
+ * How a Topic selection reads in a sentence. One topic is one quoted label;
+ * several are joined with "or", because the filter is a union -- writing them
+ * comma-separated inside one pair of quotes reads like a single odd topic
+ * nobody has.
+ */
+export function tagPhrase(tag: string): string {
+  const t = parseTags(tag);
+  if (!t.length) return "";
+  if (t.length === 1) return `\u201c${esc(t[0]!)}\u201d`;
+  const quoted = t.map((x) => `\u201c${esc(x)}\u201d`);
+  return `${quoted.slice(0, -1).join(", ")} or ${quoted[quoted.length - 1]}`;
+}
+
 export function tagBar(o: {
   /** The route the bar submits back to -- whichever page it is sitting on. */
   action: string;
@@ -1172,20 +1199,32 @@ export function tagBar(o: {
   // it narrows loses the other chips and the Clear link. The pager inside the
   // list anchors instead, because that one IS in the list.
   const here = (q: string) => `${o.action}${q ? `?${q}` : ""}`;
-  const active = o.tag.trim().toLowerCase();
   const kept = Object.entries(o.hidden).filter(([, v]) => v) as [string, string][];
+
+  // The filter is a LIST, and the default is every topic. Selected chips are
+  // the whole state: the text input is just another way to write the same
+  // list, so the two never disagree.
+  const selected = parseTags(o.tag);
+  const isOn = (label: string) => selected.some((t) => t.toLowerCase() === label.toLowerCase());
+  // Each chip toggles itself in or out and leaves the rest of the selection
+  // alone. Replacing the list on every click is what made this single-select.
+  const toggled = (label: string) =>
+    (isOn(label)
+      ? selected.filter((t) => t.toLowerCase() !== label.toLowerCase())
+      : [...selected, label].slice(0, MAX_TAGS)
+    ).join(",");
 
   return `<div class="tb">
     <span class="tb-label mono" id="tb-lab">Topic</span>
     <form method="get" action="${esc(o.action)}">
       ${kept.map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("")}
-      <input name="tag" list="pulse-tags" value="${esc(o.tag)}" aria-labelledby="tb-lab"
-             placeholder="Bullish, Dividend, …" spellcheck="false" autocomplete="off" enterkeyhint="search">
+      <input name="tag" list="pulse-tags" value="${esc(selected.join(", "))}" aria-labelledby="tb-lab"
+             placeholder="All topics. Or pick: Bullish, Dividend, …" spellcheck="false" autocomplete="off" enterkeyhint="search">
       <datalist id="pulse-tags">
         ${o.topics.map((t) => `<option value="${esc(t.label)}">${t.n}</option>`).join("")}
       </datalist>
       <button type="submit">Filter</button>
-      ${o.tag ? `<a class="clear" href="${esc(here(params("")))}">Clear</a>` : ""}
+      ${selected.length ? `<a class="clear" href="${esc(here(params("")))}">Clear${selected.length > 1 ? ` all ${selected.length}` : ""}</a>` : ""}
     </form>
     <span class="tb-count mono">${esc(o.count)}</span>
     ${
@@ -1193,12 +1232,14 @@ export function tagBar(o: {
         ? `<div class="tb-chips" role="group" aria-labelledby="tb-lab">${o.topics
             .slice(0, 14)
             .map((t) => {
-              const on = t.label.toLowerCase() === active;
-              return `<a class="tag${t.n >= 3 ? " hot" : ""}" href="${esc(here(params(on ? "" : t.label)))}"${
-                on ? ' aria-current="true"' : ""
-              } title="${on ? "Clear this tag" : `Show ${esc(t.label)} headlines`}"><b>${esc(
-                t.label
-              )}</b> ×${t.n}</a>`;
+              const on = isOn(t.label);
+              // role=group + aria-pressed, not a link list: this reads as a set
+              // of toggles, which is what it now is.
+              return `<a class="tag${t.n >= 3 ? " hot" : ""}${on ? " on" : ""}" href="${esc(
+                here(params(toggled(t.label)))
+              )}" role="button" aria-pressed="${on ? "true" : "false"}" title="${
+                on ? `Stop showing ${esc(t.label)}` : `Add ${esc(t.label)} to the filter`
+              }"><b>${esc(t.label)}</b> ×${t.n}</a>`;
             })
             .join("")}</div>`
         : ""
@@ -1673,7 +1714,7 @@ function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; pric
                 }</span></li>`
             )
             .join("")}</ol>
-           <p class="note">${p.total} headline${p.total === 1 ? "" : "s"}${p.tag ? ` tagged “${esc(p.tag)}”` : ""}${p.who ? ` naming <b>${esc(p.who)}</b>` : ""} in this range —
+           <p class="note">${p.total} headline${p.total === 1 ? "" : "s"}${p.tag ? ` tagged ${tagPhrase(p.tag)}` : ""}${p.who ? ` naming <b>${esc(p.who)}</b>` : ""} in this range —
              on this page: ${counted("positive")} bullish, ${counted("negative")} bearish, ${counted("neutral")} neither, by Sectors' own tags.</p>
            ${
              p.pages > 1
@@ -1686,7 +1727,7 @@ function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; pric
                : ""
            }`
         : `<div class="empty">No headline in this month ${
-            p.tag ? `carries the tag “${esc(p.tag)}”` : ""
+            p.tag ? `carries ${parseTags(p.tag).length === 1 ? "the tag" : "any of the tags"} ${tagPhrase(p.tag)}` : ""
           }${p.tag && p.who ? " and " : ""}${p.who ? `names ${esc(p.who)}` : ""}. Pick another, or clear the filter.</div>`
     }
   </div>`;
@@ -1899,7 +1940,7 @@ export function renderMonth(
         who: opts.pulse.who || undefined,
       },
       count: opts.pulse.tag
-        ? `${opts.pulse.total} headline${opts.pulse.total === 1 ? "" : "s"} tagged \u201c${opts.pulse.tag}\u201d`
+        ? `${opts.pulse.total} headline${opts.pulse.total === 1 ? "" : "s"} tagged ${tagPhrase(opts.pulse.tag)}`
         : `${opts.pulse.topics.length} tag${opts.pulse.topics.length === 1 ? "" : "s"} on record`,
     }),
     // The board is what just happened, so it leads; the calendar and the

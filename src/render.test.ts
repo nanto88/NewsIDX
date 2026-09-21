@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 import { test } from "node:test";
 import { EQUITY_BANDS, INDEX_BANDS } from "./config.js";
-import { chip, domainOf, esc, gcalUrl, page, paginate, pct, priceBand, renderBoard, renderMonth, renderTicker, sentClass, STYLE } from "./render.js";
+import { chip, domainOf, esc, gcalUrl, page, paginate, pct, priceBand, renderBoard, renderMonth, renderTicker, sentClass, STYLE, tagPhrase } from "./render.js";
 import type { Cell, Item } from "./calendar.js";
 import type { Board, Tile } from "./heatmap.js";
 
@@ -320,26 +320,41 @@ test("the FAQ button is a POST, and is dead when generation is unavailable", () 
   assert.ok(!/class="taglist"/.test(fresh), "and is not repeated as a second list inside the page");
 });
 
-test("a tag chip toggles: the one already filtering links back to the unfiltered month", () => {
+test("topic chips are multi-select, and the default is every topic", () => {
   const pulse = (tag: string) => ({
     from: "2026-09-01", to: "2026-09-30", tag, who: "", headlines: [], total: 0,
-    page: 1, pages: 1, offset: 0, topics: [{ label: "Dividend", n: 4 }], tickers: [],
+    page: 1, pages: 1, offset: 0,
+    topics: [{ label: "Dividend", n: 4 }, { label: "Bullish", n: 3 }],
+    tickers: [],
   });
   const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
 
+  // Nothing picked is the default, and it hides nothing.
   const off = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("") });
-  // The filter bar is at the top of the page, so a chip never scrolls you away
-  // from the other chips.
-  assert.match(off, /class="tag hot" href="\/\?month=2026-09&amp;tag=Dividend"/, "unfiltered, the chip applies the tag");
+  assert.match(off, /href="\/\?month=2026-09&amp;tag=Dividend"[^>]*aria-pressed="false"/, "unfiltered, a chip adds itself");
+  // Scoped to a chip: the page carries its own stylesheet, and that names the
+  // selector too.
+  assert.ok(!/class="tag[^"]*"[^>]*aria-pressed="true"/.test(off), "and nothing reads as selected");
   assert.ok(!/class="tag[^"]*" href="[^"]*#headlines"/.test(off), "and does not jump to the list it narrows");
+  assert.ok(!/>Clear</.test(off), "with no Clear to offer");
 
-  const on = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("Dividend") });
-  assert.match(on, /class="tag hot" href="\/\?month=2026-09" aria-current="true"/, "filtered, the same chip clears it");
+  // A second chip APPENDS rather than replacing. This is the whole feature.
+  const one = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("Dividend") });
+  assert.match(one, /href="\/\?month=2026-09&amp;tag=Dividend%2CBullish"/, "a second chip adds to the selection");
+  assert.match(one, /href="\/\?month=2026-09"[^>]*aria-pressed="true"/, "and the picked one removes just itself");
+
+  // With two picked, each chip drops only itself and leaves the other standing.
+  const two = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("Dividend,Bullish") });
+  assert.match(two, /href="\/\?month=2026-09&amp;tag=Bullish"[^>]*aria-pressed="true"/, "dropping Dividend keeps Bullish");
+  assert.match(two, /href="\/\?month=2026-09&amp;tag=Dividend"[^>]*aria-pressed="true"/, "dropping Bullish keeps Dividend");
+  assert.match(two, /Clear all 2</, "and one link clears the lot");
+  assert.match(two, /value="Dividend, Bullish"/, "the text box shows the same list it would submit");
 });
 
 test("an active filter is orange, so a narrowed page is visible at a glance", () => {
   assert.ok(STYLE.includes("--on:#ff9f43"), "the on-colour is its own token, not the product accent");
-  assert.match(STYLE, /\.tb \.tag\[aria-current="true"\]\{border-color:var\(--on\)/);
+  assert.match(STYLE, /\.tb \.tag\[aria-pressed="true"\]\{border-color:var\(--on\)/);
+  assert.match(STYLE, /\.tb \.tag\[aria-pressed="true"\]::before\{content:"\u2713 "/, "and a tick, so toggles do not read as links");
   assert.match(STYLE, /\.pulse a\.tag\[aria-current="true"\]\{border-color:var\(--on\)/);
   assert.match(STYLE, /\.tb a\.clear\{color:var\(--on\)/, "and so is the way back out of it");
 });
@@ -615,4 +630,16 @@ test("a sector box too short for a heading has none, and its tiles get the box",
   // And a box with room keeps both.
   assert.match(html, /<h4>Financials<span class="m pos">/);
   assert.match(html, /<div class="body">/);
+});
+
+test("a selection of topics reads as a list, not as one odd topic", () => {
+  assert.equal(tagPhrase(""), "", "nothing picked says nothing");
+  assert.equal(tagPhrase("Dividend"), "“Dividend”");
+  assert.equal(tagPhrase("Bearish,Dividend"), "“Bearish” or “Dividend”");
+  assert.equal(
+    tagPhrase("A,B,C"),
+    "“A”, “B” or “C”",
+    "three read as a list with one or"
+  );
+  assert.match(tagPhrase('Div<script>"'), /&lt;script&gt;/, "and a label out of the API cannot inject");
 });

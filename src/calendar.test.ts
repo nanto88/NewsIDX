@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { day, matchesTag, month, pulseOver, sentimentOf, timeline } from "./calendar.js";
+import { day, matchesTag, MAX_TAGS, month, parseTags, pulseOver, sentimentOf, timeline } from "./calendar.js";
 import { connect, upsertEvents, upsertPrices } from "./db.js";
 import { shift } from "./dates.js";
 const TODAY = "2026-09-11"; // a Friday
@@ -285,4 +285,46 @@ test("a tag filter narrows the grid's headlines, and leaves scheduled events alo
   const dated = (cells: ReturnType<typeof month>) =>
     cells.flatMap((c) => c.items).filter((i) => i.kind !== "news").length;
   assert.equal(dated(div), dated(all), "filings and reports carry no topic tags");
+});
+
+// ---------------------------------------------------------------- the topic filter
+
+test("no topic picked means every topic, which is the default", () => {
+  const item = { kind: "news", tags: ["Dividend"] } as any;
+  assert.equal(matchesTag(item, ""), true);
+  assert.equal(matchesTag(item, "   "), true);
+  assert.equal(matchesTag(item, ","), true);
+  assert.deepEqual(parseTags(""), []);
+});
+
+test("several topics are OR, so picking a second one shows more and not less", () => {
+  const dividend = { kind: "news", tags: ["Dividend", "Corporate"] } as any;
+  const bullish = { kind: "news", tags: ["Bullish"] } as any;
+  const neither = { kind: "news", tags: ["Suspension"] } as any;
+
+  assert.equal(matchesTag(dividend, "Dividend"), true);
+  assert.equal(matchesTag(bullish, "Dividend"), false);
+
+  // Adding Bullish must not drop Dividend, which is what AND would do.
+  assert.equal(matchesTag(dividend, "Dividend,Bullish"), true);
+  assert.equal(matchesTag(bullish, "Dividend,Bullish"), true);
+  assert.equal(matchesTag(neither, "Dividend,Bullish"), false);
+});
+
+test("the list tolerates how a person actually types it", () => {
+  assert.deepEqual(parseTags(" Dividend , Bullish "), ["Dividend", "Bullish"]);
+  assert.deepEqual(parseTags("Dividend,,Bullish,"), ["Dividend", "Bullish"]);
+  assert.deepEqual(parseTags("Dividend,dividend,DIVIDEND"), ["Dividend"], "the same topic twice is once");
+  assert.equal(matchesTag({ kind: "news", tags: ["Dividend"] } as any, "divid"), true, "still a substring match");
+});
+
+test("the number of topics is capped, so a URL cannot be used as a payload", () => {
+  const many = Array.from({ length: MAX_TAGS + 8 }, (_, i) => `t${i}`).join(",");
+  assert.equal(parseTags(many).length, MAX_TAGS);
+});
+
+test("an item with no tags survives an empty filter and fails a real one", () => {
+  const untagged = { kind: "news" } as any;
+  assert.equal(matchesTag(untagged, ""), true);
+  assert.equal(matchesTag(untagged, "Dividend"), false);
 });

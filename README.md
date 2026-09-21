@@ -60,7 +60,7 @@ bookmark it or send it to someone.
 | **Tone as a percentage** | Bullish and bearish news tags counted into a share, per event and per page. Nothing tagged shows nothing, not a meaningless 50% |
 | **Cluster warning** | A heads-up when your month bunches: *"three of your eight names land in the week of 21 Sep"* |
 | **The board (sector heatmap)** | A treemap of the 200 largest IDX names, grouped into the eleven IDX sectors, sized by market cap and coloured by the last session's move. Hover a tile for what was on the record. Opens fullscreen for a second screen |
-| **Topic filter** | Filter any page down to one topic. Counts are computed before the filter is applied, so an option never vanishes the moment you use it |
+| **Topic filter** | Multi-select, and every topic by default. Topics are OR, so a second pick shows more rather than less. Counts are computed before the filter applies, so an option never vanishes the moment you use it |
 | **Google Calendar export** | Any day on the calendar exports as an all-day event carrying that day's agenda. An empty day still exports, so you can park your own reminder |
 | **Price strip picker** | Price the window against IHSG, LQ45, or one company you pick. A subject with no rows renders as a plain grid, never as a fake average |
 | **Watchlist editing in the page** | Add and remove names without touching the URL by hand |
@@ -297,6 +297,18 @@ fails on a compressed video.
 5. The hit rate always says how it was measured, with the sample size beside it.
 6. No model decides anything. See [Architecture](#3-architecture).
 
+### How the Topic filter selects
+
+Nothing picked means every topic. That is the default, and a filter nobody has touched must
+not hide anything.
+
+Picking several is OR, not AND. Ticking a second topic widens the page, which is what a reader
+means by ticking a second box, and it stops the filter emptying itself on the many pairs that
+never co-occur: one story is rarely both a dividend and a suspension. The selection travels as
+a comma-separated `?tag=`, capped at 12 topics, and each one is matched case-insensitively as
+a substring of the row's own tags, so a picked chip and something typed by hand are one code
+path.
+
 ### How a window is scored
 
 Fitted from the company's own ex-dividend and general-meeting history, then scored
@@ -339,7 +351,7 @@ rhythm and its hit rate, a plain-language summary and FAQ, and an ask box for qu
 that company. The summary needs `ANTHROPIC_API_KEY`; without one the button is simply
 disabled, and the demo serves a fixture so it works with no key.
 
-**On every page**: a topic filter whose counts are computed before the filter is applied, a
+**On every page**: a multi-select topic filter that defaults to every topic, a
 price strip you can point at IHSG, LQ45 or a single company, a watchlist you can edit in place,
 a light and dark theme toggle, and a Google Calendar export on each day cell that carries that
 day's agenda as an all-day event.

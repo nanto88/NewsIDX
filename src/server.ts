@@ -9,7 +9,7 @@
  */
 import Fastify from "fastify";
 import { Client } from "./api.js";
-import { day, month, pulseOver, timeline, type Timeline } from "./calendar.js";
+import { day, month, pulseOver, TAG_QUERY_MAX, timeline, type Timeline } from "./calendar.js";
 import { needsAttention } from "./attention.js";
 import {
   anthropicKey,
@@ -229,12 +229,16 @@ const renderAgendaPage = async (req: any, reply: any) => {
   // would date September news under an October heading.
   const monthStart = `${ym}-01`;
   const monthEnd = shift(`${ym}-01`, 32).slice(0, 8) + "01";
-  // `?tag=` is free text: a picked chip and something typed by hand arrive the
-  // same way, and it is matched case-insensitively against the row's own tags.
+  // `?tag=` is a comma-separated LIST, and empty means every topic. Picked
+  // chips and something typed by hand arrive the same way, and each is matched
+  // case-insensitively against the row's own tags. Several topics are OR:
+  // ticking a second box shows more, not less. The cap is generous enough for
+  // MAX_TAGS long labels and small enough that the URL is not a payload;
+  // parseTags() enforces the real limit on how many survive.
   // EVERY block on the page takes it -- board, attention, grid and headlines --
   // because a filtered list beside three unfiltered ones is four answers to
   // the same question.
-  const tag = String(q.tag ?? "").slice(0, 60);
+  const tag = String(q.tag ?? "").slice(0, TAG_QUERY_MAX);
   // `?who=` narrows the headline list to one company, and only that list.
   // Normalised through the same parser as the companies bar, so it is a
   // ticker or it is nothing.
@@ -285,7 +289,7 @@ app.get("/ticker", async (req, reply) => {
     ...shellOpts(),
     page: pageFrom(q),
     // The same Topic filter the agenda carries, on the same query param.
-    tag: String(q.tag ?? "").slice(0, 60),
+    tag: String(q.tag ?? "").slice(0, TAG_QUERY_MAX),
     faq: faqView(t, {
       error: typeof q.faqerror === "string" ? q.faqerror.slice(0, 200) : null,
       askHash: typeof q.ask === "string" ? q.ask.slice(0, 64) : null,

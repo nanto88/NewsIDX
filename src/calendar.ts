@@ -90,12 +90,50 @@ export function sentimentOf(item: Item): Sentiment {
   return bull > bear ? "positive" : bear > bull ? "negative" : "neutral";
 }
 
-/** Case-insensitive substring against the row's own tags -- so a picked option
- * and something typed by hand are the same code path. */
+/** How many topics one filter may carry. Past this the URL is being used as a
+ * denial-of-service rather than a filter, and 12 is already more topics than
+ * the bar renders as chips. */
+export const MAX_TAGS = 12;
+
+/** How long a `?tag=` string may be before it is truncated. Room for MAX_TAGS
+ * long labels and their separators, and no room for a URL used as a payload. */
+export const TAG_QUERY_MAX = 320;
+
+/**
+ * The Topic filter as a list. `?tag=` is comma separated, so a picked chip, a
+ * handful of picked chips and something typed by hand are all one code path.
+ *
+ * Empty means every topic, which is the default: a filter nobody has touched
+ * must not hide anything.
+ */
+export function parseTags(tag: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of String(tag ?? "").split(",")) {
+    const t = raw.trim();
+    if (!t) continue;
+    const k = t.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(t);
+    if (out.length === MAX_TAGS) break;
+  }
+  return out;
+}
+
+/**
+ * Case-insensitive substring against the row's own tags.
+ *
+ * Several topics are OR, not AND: picking a second topic shows MORE, which is
+ * what a reader means by ticking a second box. AND would empty the page the
+ * moment two topics rarely co-occur, and most pairs here never do -- one story
+ * is not usually both a dividend and a suspension.
+ */
 export function matchesTag(item: Item, tag: string): boolean {
-  const q = tag.trim().toLowerCase();
-  if (!q) return true;
-  return (item.tags ?? []).some((t) => String(t).toLowerCase().includes(q));
+  const wanted = parseTags(tag);
+  if (!wanted.length) return true;
+  const have = (item.tags ?? []).map((t) => String(t).toLowerCase());
+  return wanted.some((w) => have.some((h) => h.includes(w.toLowerCase())));
 }
 
 const KIND_LABEL: Record<string, string> = {
