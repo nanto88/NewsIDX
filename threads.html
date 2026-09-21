@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Forewarned — headline threads (mockup)</title>
+<style>
+  :root{
+    color-scheme: dark light;
+    --primary:#22d3ff; --primary-light:#a5f0ff; --primary-dark:#5ce1ff;
+    --up:#2AB673; --down:#e5484d;
+    --font-ui:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --bg:#0a0908; --surface:#131211; --surface-2:#191816; --surface-3:#211f1c;
+    --border:#26241f; --border-strong:#332f28;
+    --text:#f3f1ed; --text-muted:#a29d93; --text-faint:#6b665e;
+    --primary-wash: color-mix(in srgb, var(--primary) 15%, transparent);
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 12px 28px -10px rgba(0,0,0,.5);
+  }
+  :root[data-theme="light"]{
+    --primary:#0091ea; --primary-light:#40c4ff; --primary-dark:#0064a8;
+    --bg:#faf8f6; --surface:#ffffff; --surface-2:#f5f2ef; --surface-3:#efece8;
+    --border:#ece8e3; --border-strong:#ddd7cf;
+    --text:#1a1a1a; --text-muted:#6d6a64; --text-faint:#a29d94;
+    --primary-wash: color-mix(in srgb, var(--primary) 11%, transparent);
+    --shadow: 0 1px 2px rgba(20,15,5,.04), 0 8px 24px -8px rgba(20,15,5,.08);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-ui);
+       font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  h1{margin:0;font-size:17px;font-weight:700;letter-spacing:-.015em}
+  a{color:inherit}
+  :focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+  .mono,time,.tick{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+  .wrap{max-width:780px;margin:0 auto;padding:0 16px 56px}
+  .mock{background:var(--primary-wash);border-bottom:1px solid var(--border);
+        font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;
+        color:var(--primary-dark);padding:7px 16px;text-align:center}
+  .top{display:flex;align-items:center;gap:12px;padding:18px 0 14px;border-bottom:1px solid var(--border)}
+  .brand{display:flex;align-items:baseline;gap:9px}
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--primary);box-shadow:0 0 10px var(--primary-wash)}
+  .brand small{font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.08em;
+               text-transform:uppercase;color:var(--text-faint)}
+  .top .sp{flex:1}
+  button.ghost{background:var(--surface);color:var(--text-muted);border:1px solid var(--border);
+               border-radius:8px;padding:7px 11px;font-size:12px;font-family:inherit;cursor:pointer;min-height:34px}
+  button.ghost:hover{color:var(--text);border-color:var(--border-strong)}
+  .kicker{font-family:var(--font-mono);font-size:10.5px;font-weight:600;letter-spacing:.09em;
+          text-transform:uppercase;color:var(--text-faint);margin:26px 0 10px}
+  .muted{color:var(--text-muted)} .faint{color:var(--text-faint)}
+  .pos{color:var(--up)} .neg{color:var(--down)}
+  .note{margin:6px 0 0;font-size:12px;color:var(--text-muted)}
+  .empty{border:1px dashed var(--border-strong);border-radius:12px;padding:18px;
+         text-align:center;color:var(--text-faint);font-size:13px}
+
+  /* --- the block itself, classes as in render.ts */
+  .pulse{display:grid;gap:10px;margin-top:14px;padding:14px;border-radius:12px;
+         background:var(--surface);border:1px solid var(--border)}
+  .pulse .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .pulse .tag{font-family:var(--font-mono);font-size:11px;background:var(--surface-2);
+              border:1px solid var(--border);border-radius:999px;padding:3px 9px;color:var(--text-muted);
+              text-decoration:none;cursor:pointer}
+  .pulse .tag b{color:var(--text);font-weight:600}
+  .pulse .tag.hot{border-color:color-mix(in srgb,var(--primary) 35%,transparent);color:var(--primary-dark)}
+  .pulse .tag:hover{border-color:var(--border-strong);color:var(--text)}
+  .pulse .tag[aria-current="true"]{border-color:var(--primary);color:var(--primary-dark);background:var(--primary-wash)}
+  .pulse ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+  .pulse ol li{font-size:12.5px;display:grid;grid-template-columns:56px 44px 1fr;gap:10px;align-items:baseline}
+  .pulse ol li .d{font-family:var(--font-mono);font-size:11px;color:var(--text-faint)}
+  .tagfilter{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .tagfilter input{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);color:var(--text);
+                   border:1px solid var(--border);border-radius:999px;padding:6px 12px;min-width:200px;min-height:34px}
+  .tagfilter button,.tagfilter a.clear{font-family:var(--font-mono);font-size:12px;background:var(--surface);
+                   color:var(--text-muted);border:1px solid var(--border);border-radius:999px;
+                   padding:6px 12px;cursor:pointer;min-height:34px;text-decoration:none;
+                   display:inline-flex;align-items:center}
+
+  /* --- NEW: a thread. One story, every outlet that ran it. */
+  .pulse ol li.thr{grid-template-columns:56px 44px 1fr;align-items:start}
+  .thr details{margin:0}
+  .thr summary{list-style:none;cursor:pointer;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+  .thr summary::-webkit-details-marker{display:none}
+  .thr summary::before{content:"▸";font-family:var(--font-mono);font-size:10px;color:var(--text-faint);
+                       transform:translateY(-1px)}
+  .thr details[open] > summary::before{content:"▾"}
+  .thr .n{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;
+          color:var(--text-muted);background:var(--surface-2);border:1px solid var(--border);
+          border-radius:999px;padding:1px 7px;white-space:nowrap}
+  .thr .n.mix{border-color:color-mix(in srgb,var(--primary) 35%,transparent);color:var(--primary-dark)}
+  .thr .why{font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint)}
+  .thr ul{list-style:none;margin:6px 0 0;padding:0 0 0 14px;display:flex;flex-direction:column;gap:5px;
+          border-left:1px solid var(--border)}
+  .thr ul li{display:grid;grid-template-columns:52px 1fr;gap:8px;font-size:12px;align-items:baseline}
+  .thr ul li .d{font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint)}
+  .thr .tg{font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint)}
+  .single .why{display:none}
+
+  /* --- the knob. Not shipping UI: the mockup's own control. */
+  .knob{display:grid;gap:8px;margin-top:14px;padding:12px 14px;border-radius:12px;
+        background:var(--surface-2);border:1px dashed var(--border-strong)}
+  .knob .hdr{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;
+             color:var(--text-faint)}
+  .knob .line{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .knob input[type=range]{flex:1;min-width:180px;accent-color:var(--primary)}
+  .knob .val{font-family:var(--font-mono);font-size:12px;color:var(--primary-dark);min-width:52px}
+  .knob label{font-size:12px;color:var(--text-muted);display:flex;gap:6px;align-items:center}
+  .seg{display:inline-flex;border:1px solid var(--border);border-radius:999px;overflow:hidden}
+  .seg button{background:var(--surface);border:0;border-right:1px solid var(--border);color:var(--text-muted);
+              font-family:var(--font-mono);font-size:11.5px;padding:6px 12px;cursor:pointer;min-height:32px}
+  .seg button:last-child{border-right:0}
+  .seg button[aria-pressed="true"]{background:var(--primary-wash);color:var(--primary-dark)}
+  @media (max-width:640px){
+    .pulse ol li,.pulse ol li.thr{grid-template-columns:1fr;gap:2px}
+    .thr ul li{grid-template-columns:1fr}
+  }
+</style>
+
+<div class="mock">MOCKUP — fabricated headlines, fabricated outlets. Nothing here is a real IDX story.</div>
+<div class="wrap">
+  <div class="top">
+    <div class="brand"><span class="dot"></span><h1>Forewarned</h1><small>headline threads</small></div>
+    <span class="sp"></span>
+    <button class="ghost" id="theme">Light</button>
+  </div>
+
+  <p class="kicker">Headlines this month · so far · 1 Sep–18 Sep</p>
+
+  <div class="pulse">
+    <div class="tagfilter">
+      <span class="faint mono" style="font-size:10.5px">TAG</span>
+      <input id="tagq" placeholder="Bullish, Dividend, …" spellcheck="false" autocomplete="off">
+      <button id="apply">Filter</button>
+      <a class="clear" id="clear" href="#">Clear</a>
+    </div>
+
+    <div class="row" id="topics"><span class="faint mono" style="font-size:10.5px">TAGS ON RECORD</span></div>
+    <div class="row" id="tickers"><span class="faint mono" style="font-size:10.5px">MOST ACTIVE</span></div>
+
+    <ol id="list"></ol>
+    <p class="note" id="foot"></p>
+  </div>
+
+  <div class="knob">
+    <div class="hdr">Mockup controls — not shipping UI</div>
+    <div class="line">
+      <div class="seg">
+        <button id="mFlat" aria-pressed="false">Flat (today)</button>
+        <button id="mThr" aria-pressed="true">Threaded (proposed)</button>
+      </div>
+      <label><input type="checkbox" id="why" checked> show why they merged</label>
+    </div>
+    <div class="line">
+      <span class="hdr" style="min-width:150px">THREAD_SIMILARITY</span>
+      <input type="range" id="sim" min="0.15" max="0.8" step="0.05" value="0.4">
+      <span class="val" id="simv">0.40</span>
+    </div>
+    <p class="note faint" id="stats"></p>
+  </div>
+
+  <p class="note faint">Threads are formed from the rows we hold: same subject, overlapping title
+  wording. That is a <b>wording</b> match, not a verified same-event claim — every member keeps its
+  own date, tags and source link, and the bullish/bearish counts below are still per headline.</p>
+</div>
+
+<script>
+// ---------------------------------------------------------------- fixtures
+// Fabricated. Shaped like /v2/news/ rows: date, symbol (often empty), title,
+// source host, Sectors' own tags.
+const ROWS = [
+  ["2026-09-17","BBRI","BBRI board approves IDR 320 interim dividend","kontan.invalid",["Bullish","Dividend"]],
+  ["2026-09-17","BBRI","Bank BBRI declares interim dividend of IDR 320 per share","bisnis.invalid",["Bullish","Dividend"]],
+  ["2026-09-18","BBRI","BBRI interim dividend set at IDR 320, ex-date 2 October","cnbc.invalid",["Bullish","Dividend"]],
+  ["2026-09-18","BBRI","Analysts call BBRI interim dividend a signal on full-year payout","investor.invalid",["Bullish","Analyst Ratings","Dividend"]],
+  ["2026-09-15","ANTM","ANTM cuts output guidance on lower ore grade","kontan.invalid",["Bearish","Commodities"]],
+  ["2026-09-15","ANTM","Antam trims 2026 output guidance after ore grade slips","bisnis.invalid",["Bearish","Commodities"]],
+  ["2026-09-16","ANTM","ANTM output guidance cut sends shares to three-month low","cnbc.invalid",["Bearish","Commodities"]],
+  ["2026-09-11","TLKM","TLKM data-centre capex questioned by two brokerages","investor.invalid",["Bearish","Capital & Funding"]],
+  ["2026-09-12","TLKM","Brokerages question TLKM data-centre capex plan","kontan.invalid",["Bearish","Capital & Funding"]],
+  ["2026-09-12","TLKM","TLKM defends data-centre capex after brokerage downgrades","bisnis.invalid",["Bearish","Capital & Funding"]],
+  ["2026-09-08","BMRI","BMRI plans rights issue to fund digital build-out","cnbc.invalid",["Capital & Funding"]],
+  ["2026-09-09","BMRI","Bank Mandiri rights issue to fund digital build-out, sources say","bisnis.invalid",["Capital & Funding"]],
+  ["2026-09-10","BMRI","BMRI rights issue priced below market, brokers say","kontan.invalid",["Bearish","Capital & Funding"]],
+  ["2026-09-05","ICBP","ICBP raises instant-noodle prices in three provinces","kontan.invalid",["Bullish","Consumer","Pricing"]],
+  ["2026-09-05","ICBP","Indofood CBP raises noodle prices across three provinces","bisnis.invalid",["Bullish","Consumer","Pricing"]],
+  ["2026-09-14","ICBP","ICBP flags higher wheat costs for the coming quarter","investor.invalid",["Bearish","Consumer"]],
+  ["2026-09-03","TLKM","TLKM wins enterprise contract in East Java","bisnis.invalid",["Bullish","Business Expansion"]],
+  ["2026-09-04","TLKM","TLKM board approves interim dividend schedule","kontan.invalid",["Bullish","Dividend"]],
+  ["2026-09-02","BBCA","BBCA net interest margin holds above peers in August","investor.invalid",["Bullish","Banking"]],
+  ["2026-09-13","BBCA","BBCA names new head of digital banking","kontan.invalid",["Management"]],
+  ["2026-09-07","ASII","ASII vehicle sales slip for a second month","bisnis.invalid",["Bearish","Consumer"]],
+  ["2026-09-16","ASII","Astra vehicle sales slip again in August","cnbc.invalid",["Bearish","Consumer"]],
+  ["2026-09-01","","IDX composite closes flat as banks drift","cnbc.invalid",["Market Sentiment"]],
+  ["2026-09-09","","IDX composite slips as banks drift lower","bisnis.invalid",["Market Sentiment"]],
+  ["2026-09-18","","Foreign investors net buyers on IDX for a fourth session","kontan.invalid",["Bullish","Market Sentiment"]],
+  ["2026-09-06","","Rupiah steadies before the central bank meeting","investor.invalid",["Market Sentiment"]],
+  ["2026-09-10","UNVR","UNVR distribution overhaul enters second phase","bisnis.invalid",["Consumer"]],
+  ["2026-09-12","PGAS","PGAS signs LNG supply deal with a Japanese buyer","kontan.invalid",["Bullish","Business Expansion"]],
+  ["2026-09-15","ADRO","ADRO coal shipment volumes beat guidance","investor.invalid",["Bullish","Commodities"]],
+  ["2026-09-17","ADRO","Adro shipment volumes beat its own guidance","cnbc.invalid",["Bullish","Commodities"]],
+].map(([date,symbol,title,host,tags])=>({date,symbol,title,host,tags,
+  url:"https://"+host+"/fixture/"+encodeURIComponent(title.slice(0,24))}));
+
+// ---------------------------------------------------------------- grouping
+// The whole proposal, in the form threadsOf() would take. Deterministic, no
+// model: lowercase, strip the ticker and stopwords, Jaccard over what is left.
+const STOP = new Set(("a an and are as at be by for from has have in into is it its of on or "+
+  "over per say says said the to up with after before its’ their new two three second again "+
+  "amid than that this those these"). split(" "));
+
+function tokens(r){
+  return new Set(r.title.toLowerCase()
+    .replace(/[^a-z0-9 ]/g," ")
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !STOP.has(w) && w !== r.symbol.toLowerCase()));
+}
+function jaccard(a,b){
+  let hit = 0; for (const t of a) if (b.has(t)) hit++;
+  return hit / (a.size + b.size - hit || 1);
+}
+const SENT = t => /^bullish$/i.test(t) ? "positive" : /^bearish$/i.test(t) ? "negative" : null;
+const sentimentOf = r => r.tags.map(SENT).find(Boolean) || "neutral";
+
+/** Single-link over one symbol bucket: a row joins a thread if it is close
+ *  enough to ANY member, not just the first one seen. Seed-matching split
+ *  BBRI's four dividend stories into 3 + 1, which is the bug this avoids.
+ *  ponytail: O(n^2) pairs inside a bucket. Fine at a few hundred a month;
+ *  an inverted index on rare tokens if a bucket ever passes ~1k. */
+function threadsOf(rows, threshold){
+  const bySubject = new Map();
+  for (const r of rows) {
+    const k = r.symbol || "market";
+    (bySubject.get(k) ?? bySubject.set(k,[]).get(k)).push(r);
+  }
+  const out = [];
+  for (const [subject, list] of bySubject) {
+    const toks = list.map(tokens);
+    // Union-find, so the result does not depend on the order rows arrived in.
+    const parent = list.map((_,i) => i);
+    const find = i => parent[i] === i ? i : (parent[i] = find(parent[i]));
+    let worstOf = new Map();
+    for (let i = 0; i < list.length; i++)
+      for (let j = i + 1; j < list.length; j++) {
+        const s = jaccard(toks[i], toks[j]);
+        if (s < threshold) continue;
+        const a = find(i), b = find(j);
+        if (a !== b) parent[b] = a;
+        const root = find(i);
+        worstOf.set(root, Math.min(worstOf.get(root) ?? 1, s));
+      }
+    const groups = new Map();
+    for (let i = 0; i < list.length; i++) {
+      const root = find(i);
+      (groups.get(root) ?? groups.set(root,[]).get(root)).push(i);
+    }
+    for (const [root, idx] of groups) {
+      const members = idx.map(i => list[i]).sort((a,b) => b.date.localeCompare(a.date));
+      // Every token every member shares. A chained thread can share none --
+      // it says so rather than inventing a label.
+      const shared = [...idx.map(i => toks[i]).reduce((acc,t) => new Set([...acc].filter(x => t.has(x))))];
+      out.push({
+        subject, members,
+        // The label is the earliest wording -- whoever ran it first, not
+        // whoever wrote the punchiest headline.
+        lead: members[members.length - 1],
+        from: members[members.length-1].date, to: members[0].date,
+        shared,
+        score: members.length > 1 ? (worstOf.get(root) ?? threshold) : 1,
+        // Per headline, never per thread: five outlets on one bullish story is
+        // five bullish rows, and collapsing them would reweight the split.
+        pos: members.filter(m => sentimentOf(m) === "positive").length,
+        neg: members.filter(m => sentimentOf(m) === "negative").length,
+        tags: [...new Set(members.flatMap(m => m.tags))],
+      });
+    }
+  }
+  return out.sort((a,b) => b.to.localeCompare(a.to) || b.members.length - a.members.length);
+}
+
+// ---------------------------------------------------------------- render
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmt = d => new Date(d+"T00:00:00").toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+const sentClass = r => ({positive:"pos",negative:"neg",neutral:""})[sentimentOf(r)];
+const state = { mode:"threaded", tag:"", sim:0.4, why:true };
+const matches = (r,tag) => !tag || r.tags.some(t => t.toLowerCase() === tag.trim().toLowerCase());
+
+function headlineLine(r){
+  return `<li><span class="d">${esc(fmt(r.date))}</span>
+    <span class="tick">${esc(r.symbol || "market")}</span>
+    <span class="${sentClass(r)}"><a class="src ${sentClass(r)}" href="${esc(r.url)}"
+       target="_blank" rel="noreferrer noopener" title="Open the source at ${esc(r.host)}"
+       >${esc(r.title)} ↗</a>
+      <span class="faint mono" style="font-size:10.5px">${r.tags.map(esc).join(" · ")}</span></span></li>`;
+}
+
+function threadLine(t){
+  if (t.members.length === 1) return headlineLine(t.lead).replace("<li>",'<li class="thr single">');
+  const mix = t.pos && t.neg;
+  return `<li class="thr">
+    <span class="d">${esc(fmt(t.from))}${t.from !== t.to ? "–"+esc(fmt(t.to)) : ""}</span>
+    <span class="tick">${esc(t.subject)}</span>
+    <div><details>
+      <summary>
+        <span class="${sentClass(t.lead)}">${esc(t.lead.title)}</span>
+        <span class="n${mix ? " mix" : ""}">${t.members.length} outlets${
+          mix ? " · split" : t.pos ? " · " + t.pos + " bullish" : t.neg ? " · " + t.neg + " bearish" : ""}</span>
+        ${state.why ? `<span class="why">shared: ${esc(t.shared.slice(0,4).join(" ")) || "—"} · min ${t.score.toFixed(2)}</span>` : ""}
+      </summary>
+      <ul>${t.members.map(m => `<li><span class="d">${esc(fmt(m.date))}</span>
+        <span><a class="${sentClass(m)}" href="${esc(m.url)}" target="_blank" rel="noreferrer noopener"
+          >${esc(m.title)} ↗</a>
+          <span class="tg">${esc(m.host)} · ${m.tags.map(esc).join(" · ")}</span></span></li>`).join("")}</ul>
+    </details></div></li>`;
+}
+
+function draw(){
+  const kept = ROWS.filter(r => matches(r, state.tag));
+  const list = document.getElementById("list");
+  const foot = document.getElementById("foot");
+
+  // Options are counted BEFORE the filter -- options that vanish the moment
+  // you use one are a dead end.
+  const topics = new Map();
+  for (const r of ROWS) for (const t of r.tags) topics.set(t, (topics.get(t)??0)+1);
+  document.getElementById("topics").innerHTML =
+    `<span class="faint mono" style="font-size:10.5px">TAGS ON RECORD</span>` +
+    [...topics].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0])).slice(0,14)
+      .map(([l,n])=>`<a class="tag${n>=3?" hot":""}" data-tag="${esc(l)}"${
+        l.toLowerCase()===state.tag.trim().toLowerCase()?' aria-current="true"':""
+      } href="#"><b>${esc(l)}</b> ×${n}</a>`).join("");
+
+  const tick = new Map();
+  for (const r of kept) if (r.symbol) tick.set(r.symbol,(tick.get(r.symbol)??0)+1);
+  document.getElementById("tickers").innerHTML =
+    `<span class="faint mono" style="font-size:10.5px">MOST ACTIVE</span>` +
+    [...tick].sort((a,b)=>b[1]-a[1]).slice(0,6)
+      .map(([s,n])=>`<a class="tag" href="#"><b>${esc(s)}</b> ${n} · news</a>`).join("");
+
+  if (!kept.length){
+    list.innerHTML = "";
+    foot.innerHTML = `<span class="empty" style="display:block">No headline in this month carries the tag
+      “${esc(state.tag)}”. Pick another, or clear the filter.</span>`;
+    document.getElementById("stats").textContent = "";
+    return;
+  }
+
+  // Filter first, then group: a thread shown under a tag must only hold the
+  // members that match it.
+  const threads = threadsOf(kept, state.sim);
+  const pos = kept.filter(r => sentimentOf(r)==="positive").length;
+  const neg = kept.filter(r => sentimentOf(r)==="negative").length;
+  const merged = threads.filter(t => t.members.length > 1);
+
+  if (state.mode === "flat"){
+    list.innerHTML = kept.slice().sort((a,b)=>b.date.localeCompare(a.date)).map(headlineLine).join("");
+    foot.innerHTML = `${kept.length} headline${kept.length===1?"":"s"}${
+      state.tag?` tagged “${esc(state.tag)}”`:""} in this range — ${pos} bullish, ${neg} bearish,
+      ${kept.length-pos-neg} neither, by Sectors' own tags.`;
+  } else {
+    list.innerHTML = threads.map(threadLine).join("");
+    foot.innerHTML = `${threads.length} thread${threads.length===1?"":"s"} over
+      ${kept.length} headline${kept.length===1?"":"s"}${state.tag?` tagged “${esc(state.tag)}”`:""} —
+      ${pos} bullish, ${neg} bearish, ${kept.length-pos-neg} neither, counted per headline.`;
+  }
+  document.getElementById("stats").textContent =
+    `${kept.length} headlines → ${threads.length} threads · ${merged.length} carry more than one outlet · `
+    + `largest ${Math.max(...threads.map(t=>t.members.length))} · `
+    + `${(100*(1-threads.length/kept.length)).toFixed(0)}% fewer lines to read`;
+}
+
+// ---------------------------------------------------------------- wiring
+document.getElementById("theme").onclick = e => {
+  const light = document.documentElement.dataset.theme === "light";
+  document.documentElement.dataset.theme = light ? "dark" : "light";
+  e.target.textContent = light ? "Light" : "Dark";
+};
+const setMode = m => { state.mode = m;
+  mThr.setAttribute("aria-pressed", String(m==="threaded"));
+  mFlat.setAttribute("aria-pressed", String(m==="flat")); draw(); };
+mFlat.onclick = () => setMode("flat");
+mThr.onclick  = () => setMode("threaded");
+sim.oninput = e => { state.sim = +e.target.value; simv.textContent = state.sim.toFixed(2); draw(); };
+why.onchange = e => { state.why = e.target.checked; draw(); };
+apply.onclick = () => { state.tag = tagq.value; draw(); };
+tagq.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); state.tag = tagq.value; draw(); } };
+clear.onclick = e => { e.preventDefault(); state.tag = ""; tagq.value = ""; draw(); };
+document.getElementById("topics").onclick = e => {
+  const a = e.target.closest("[data-tag]"); if (!a) return;
+  e.preventDefault(); state.tag = tagq.value = a.dataset.tag; draw();
+};
+draw();
+</script>

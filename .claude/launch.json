@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "autoPort": true,
+  "configurations": [
+    {
+      "name": "forewarned-demo",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "demo:serve"],
+      "port": 3000,
+      "autoPort": true
+    },
+    {
+      "name": "forewarned",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "serve"],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}

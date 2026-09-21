@@ -1,0 +1,526 @@
+<meta charset="utf-8">
+<title>Forewarned IDX Agenda</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* Tokens copied verbatim from ../sentry_fin/design-system.html — dark is :root, light is opt-in.
+     plan.md §4: the token-drift test asserts against that file, so these values do not get "improved". */
+  :root{
+    color-scheme: dark light;
+    --primary:#22d3ff; --primary-light:#a5f0ff; --primary-dark:#5ce1ff;
+    --up:#2AB673; --down:#e5484d;
+    --font-ui:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+    --font-mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --bg:#0a0908; --surface:#131211; --surface-2:#191816; --surface-3:#211f1c;
+    --border:#26241f; --border-strong:#332f28;
+    --text:#f3f1ed; --text-muted:#a29d93; --text-faint:#6b665e;
+    --primary-wash: color-mix(in srgb, var(--primary) 15%, transparent);
+    --up-wash: color-mix(in srgb, var(--up) 14%, transparent);
+    --down-wash: color-mix(in srgb, var(--down) 12%, transparent);
+    --ring: color-mix(in srgb, var(--text) 14%, transparent);
+    --shadow: 0 1px 2px rgba(0,0,0,.5), 0 12px 28px -10px rgba(0,0,0,.5);
+    --ease: cubic-bezier(.2,.7,.3,1);
+  }
+  :root[data-theme="light"]{
+    --primary:#0091ea; --primary-light:#40c4ff; --primary-dark:#0064a8;
+    --bg:#faf8f6; --surface:#ffffff; --surface-2:#f5f2ef; --surface-3:#efece8;
+    --border:#ece8e3; --border-strong:#ddd7cf;
+    --text:#1a1a1a; --text-muted:#6d6a64; --text-faint:#a29d94;
+    --primary-wash: color-mix(in srgb, var(--primary) 11%, transparent);
+    --shadow: 0 1px 2px rgba(20,15,5,.04), 0 8px 24px -8px rgba(20,15,5,.08);
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --primary:#0091ea; --primary-light:#40c4ff; --primary-dark:#0064a8;
+      --bg:#faf8f6; --surface:#ffffff; --surface-2:#f5f2ef; --surface-3:#efece8;
+      --border:#ece8e3; --border-strong:#ddd7cf;
+      --text:#1a1a1a; --text-muted:#6d6a64; --text-faint:#a29d94;
+      --primary-wash: color-mix(in srgb, var(--primary) 11%, transparent);
+      --shadow: 0 1px 2px rgba(20,15,5,.04), 0 8px 24px -8px rgba(20,15,5,.08);
+    }
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-ui);
+       font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{margin:0;text-wrap:balance}
+  .mono,time,.tick,.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+  a{color:inherit}
+  :focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+  @media (prefers-reduced-motion:reduce){*{transition-duration:.001ms !important;animation-duration:.001ms !important}}
+
+  .wrap{max-width:780px;margin:0 auto;padding:0 16px 56px}
+
+  /* ---------------- chrome ---------------- */
+  .mock{background:var(--primary-wash);border-bottom:1px solid var(--border);
+        font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;
+        color:var(--primary-dark);padding:7px 16px;text-align:center}
+  .top{display:flex;align-items:center;gap:12px;padding:18px 0 14px;border-bottom:1px solid var(--border)}
+  .brand{font-size:17px;font-weight:700;letter-spacing:-.015em;display:flex;align-items:baseline;gap:9px}
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--primary);box-shadow:0 0 10px var(--primary-wash)}
+  .brand small{font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.08em;
+               text-transform:uppercase;color:var(--text-faint)}
+  .top .sp{flex:1}
+  button.ghost{background:var(--surface);color:var(--text-muted);border:1px solid var(--border);
+               border-radius:8px;padding:7px 11px;font-size:12px;font-family:inherit;cursor:pointer;min-height:34px}
+  button.ghost:hover{color:var(--text);border-color:var(--border-strong)}
+
+  /* tabs = the four routes in plan.md §4a */
+  .tabs{display:flex;gap:4px;overflow-x:auto;padding:12px 0 0;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--text-muted);
+       font-family:var(--font-mono);font-size:12px;padding:8px 11px;cursor:pointer;white-space:nowrap;min-height:44px}
+  .tab:hover{color:var(--text)}
+  .tab[aria-selected="true"]{color:var(--primary);border-bottom-color:var(--primary)}
+  .tab .r{color:var(--text-faint);font-size:11px}
+  .tab[aria-selected="true"] .r{color:var(--primary-dark)}
+
+  /* ---------------- shared pieces ---------------- */
+  .kicker{font-family:var(--font-mono);font-size:10.5px;font-weight:600;letter-spacing:.09em;
+          text-transform:uppercase;color:var(--text-faint);margin:26px 0 10px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .muted{color:var(--text-muted)}
+  .faint{color:var(--text-faint)}
+
+  .wl{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px}
+  .wl .pill{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);
+            border:1px solid var(--border);border-radius:999px;padding:4px 10px}
+  .wl .pill.add{color:var(--text-faint);border-style:dashed}
+
+  .summary{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--border);
+           border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-top:14px}
+  .summary div{background:var(--surface);padding:13px 14px}
+  .summary .n{font-family:var(--font-mono);font-size:21px;font-weight:600;letter-spacing:-.02em;display:block}
+  .summary .n.warn{color:var(--down)}
+  .summary .l{font-size:11.5px;color:var(--text-muted);display:block;margin-top:2px}
+
+  .alert{display:flex;gap:11px;margin-top:14px;padding:12px 14px;border-radius:12px;
+         background:var(--down-wash);border:1px solid color-mix(in srgb,var(--down) 30%,transparent)}
+  .alert b{font-weight:600}
+  .alert .ic{font-family:var(--font-mono);color:var(--down);font-weight:700}
+
+  /* ---------------- chips: three classes, three shapes (plan.md §2) ---------------- */
+  .group{margin-top:8px}
+  .group h3{font-size:12px;font-weight:600;color:var(--text-muted);display:flex;gap:10px;align-items:center;
+            margin:18px 0 8px;font-family:var(--font-mono);letter-spacing:.03em}
+  .group h3::after{content:"";flex:1;height:1px;background:var(--border)}
+  .rows{display:flex;flex-direction:column;gap:7px}
+  .chip{display:grid;grid-template-columns:78px 52px 1fr;gap:12px;align-items:baseline;
+        padding:11px 13px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2)}
+  .chip .when{font-family:var(--font-mono);font-size:12px;color:var(--text-muted)}
+  .chip .tick{font-size:12.5px;font-weight:600}
+  .chip .what{font-size:13px}
+  .chip .kind{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+              color:var(--text-faint);display:block;margin-bottom:3px}
+  .chip.sched{box-shadow:inset 2px 0 0 var(--primary)}
+  .chip.sched .kind{color:var(--primary-dark)}
+  .chip.pred{background:transparent;border-style:dashed;color:var(--text-muted)}
+  .chip.pred .tick{color:var(--text)}
+  .chip.fact .kind{color:var(--text-faint)}
+  .drop{color:var(--down);font-family:var(--font-mono);font-size:12.5px}
+  .note{color:var(--text-muted);font-size:12px;margin-top:3px}
+  .src{font-family:var(--font-mono);font-size:11px;color:var(--primary-dark);
+       border-bottom:1px dashed color-mix(in srgb,var(--primary) 40%,transparent);cursor:default}
+
+  .conf{display:flex;width:fit-content;align-items:center;gap:7px;margin-top:5px}
+  .conf .bar{width:74px;height:5px;border-radius:3px;background:var(--surface-3);overflow:hidden;border:1px solid var(--border)}
+  .conf .bar i{display:block;height:100%;background:var(--text-muted)}
+  .conf .v{font-family:var(--font-mono);font-size:11px;color:var(--text-muted)}
+  .chip.pred .word{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);
+                   text-transform:uppercase;letter-spacing:.07em}
+
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:22px;padding-top:14px;border-top:1px solid var(--border)}
+  .legend span{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-muted)}
+  .sw{width:22px;height:13px;border-radius:4px;border:1px solid var(--border);background:var(--surface-2)}
+  .sw.s{box-shadow:inset 2px 0 0 var(--primary)}
+  .sw.p{background:transparent;border-style:dashed}
+
+  /* ---------------- month grid ---------------- */
+  .mhead{display:flex;align-items:center;gap:10px;margin-top:18px}
+  .mhead h2{font-size:15px;font-family:var(--font-mono);font-weight:600}
+  .dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin:14px 0 5px}
+  .dow span{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--text-faint);text-align:center}
+  .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
+  .cell{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+        min-height:88px;padding:6px;display:flex;flex-direction:column;gap:4px}
+  .cell .d{font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted)}
+  .cell.wknd{background:var(--surface-2);border-color:transparent}
+  .cell.out{opacity:.38}
+  .cell.today{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary-wash)}
+  .cell.today .d{color:var(--primary);font-weight:600}
+  .mini{font-family:var(--font-mono);font-size:9.5px;line-height:1.35;padding:2px 4px;border-radius:4px;
+        background:var(--surface-2);border:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mini.s{box-shadow:inset 2px 0 0 var(--primary)}
+  .mini.p{background:transparent;border-style:dashed;color:var(--text-muted)}
+  .more{font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);padding-left:3px}
+  .dots{display:none;gap:3px}
+  .dots i{width:5px;height:5px;border-radius:50%;background:var(--text-muted)}
+  .dots i.s{background:var(--primary)}
+  .dots i.p{background:transparent;border:1px solid var(--text-faint)}
+  @media (max-width:640px){
+    .cell{min-height:52px;align-items:flex-start}
+    .mini,.more{display:none}
+    .dots{display:flex}
+    .summary{grid-template-columns:1fr}
+    .chip{grid-template-columns:1fr;gap:2px}
+    .chip .when{order:-1}
+  }
+
+  /* ---------------- day + ticker ---------------- */
+  .daycard{display:flex;flex-direction:column;gap:7px;margin-top:8px}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  .tw{overflow-x:auto;margin-top:10px;border:1px solid var(--border);border-radius:10px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+  th{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
+     color:var(--text-faint);font-weight:600;background:var(--surface-2)}
+  tbody tr:last-child td{border-bottom:0}
+  td.hit{color:var(--up)}td.miss{color:var(--down)}
+  .hr{display:flex;align-items:center;gap:12px;margin-top:12px}
+  .hr .big{font-family:var(--font-mono);font-size:24px;font-weight:600}
+  .hr .barwide{flex:1;height:8px;border-radius:4px;background:var(--surface-3);border:1px solid var(--border);overflow:hidden}
+  .hr .barwide i{display:block;height:100%;background:var(--up)}
+
+  .empty{border:1px dashed var(--border-strong);border-radius:10px;padding:14px;color:var(--text-muted);font-size:13px}
+  footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--border);
+         font-family:var(--font-mono);font-size:11px;color:var(--text-faint);
+         display:flex;flex-wrap:wrap;gap:6px 16px}
+  [hidden]{display:none !important}
+</style>
+
+<div class="mock mono">MOCK_MODE · fixture data, no API key, no network · every number on this page is fabricated</div>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><span class="dot"></span>Forewarned <small>IDX event agenda</small></div>
+    <span class="sp"></span>
+    <button class="ghost" id="theme" type="button">Light</button>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Views">
+    <button class="tab" role="tab" id="t-agenda" aria-controls="p-agenda" aria-selected="true">Agenda <span class="r">/</span></button>
+    <button class="tab" role="tab" id="t-month" aria-controls="p-month" aria-selected="false">Month <span class="r">/month</span></button>
+    <button class="tab" role="tab" id="t-day" aria-controls="p-day" aria-selected="false">Day <span class="r">/day</span></button>
+    <button class="tab" role="tab" id="t-ticker" aria-controls="p-ticker" aria-selected="false">Ticker <span class="r">/ticker</span></button>
+  </nav>
+
+  <!-- ============================== AGENDA ============================== -->
+  <section id="p-agenda" role="tabpanel" aria-labelledby="t-agenda">
+    <p class="kicker">Watchlist · 8 names · next 90 days</p>
+    <div class="wl">
+      <span class="pill">BBCA</span><span class="pill">BBRI</span><span class="pill">BMRI</span>
+      <span class="pill">TLKM</span><span class="pill">ASII</span><span class="pill">ANTM</span>
+      <span class="pill">ICBP</span><span class="pill">PGAS</span>
+      <span class="pill add">+ add ticker</span>
+    </div>
+
+    <div class="summary">
+      <div><span class="n">6</span><span class="l">dated events ahead</span></div>
+      <div><span class="n">4</span><span class="l">predicted report windows</span></div>
+      <div><span class="n warn">−4.3%</span><span class="l">largest mechanical ex-div drop</span></div>
+    </div>
+
+    <div class="alert">
+      <span class="ic">▲</span>
+      <div><b>Three of your eight names land in the week of 21 Sep.</b>
+        <div class="note">TLKM ex-dividend · PGAS ex-dividend · BBCA general meeting. Nothing else in your
+          watchlist has a dated event until late October.</div></div>
+    </div>
+
+    <div class="group">
+      <h3>Today · Fri 11 Sep</h3>
+      <div class="rows">
+        <div class="chip fact">
+          <span class="when"><time datetime="2026-09-11">11 Sep</time></span>
+          <span class="tick">ASII</span>
+          <span class="what"><span class="kind">Insider filing</span>
+            Director sells 400,000 shares · <span class="src">filing record ↗</span></span>
+        </div>
+        <div class="chip fact">
+          <span class="when"><time datetime="2026-09-11">11 Sep</time></span>
+          <span class="tick">ICBP</span>
+          <span class="what"><span class="kind">News</span>
+            Two headlines published today · <span class="src">news record ↗</span>
+            <div class="note">Published that day. Not a cause of any price move.</div></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Next week · 14–20 Sep</h3>
+      <div class="rows">
+        <div class="chip sched">
+          <span class="when"><time datetime="2026-09-16">Wed 16 Sep</time></span>
+          <span class="tick">BMRI</span>
+          <span class="what"><span class="kind">Scheduled · general meeting</span>
+            Extraordinary general meeting · <span class="src">corporate action ↗</span>
+            <div class="note">Dated by the issuer.</div></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Week of 21 Sep</h3>
+      <div class="rows">
+        <div class="chip sched">
+          <span class="when"><time datetime="2026-09-23">Tue 23 Sep</time></span>
+          <span class="tick">TLKM</span>
+          <span class="what"><span class="kind">Scheduled · ex-dividend</span>
+            IDR 168 per share · expected drop <span class="drop">−4.3%</span>
+            <div class="note">Mechanical, not news. The price opens lower by roughly the dividend —
+              holders are not losing 4.3%, they are receiving it.</div></span>
+        </div>
+        <div class="chip sched">
+          <span class="when"><time datetime="2026-09-24">Wed 24 Sep</time></span>
+          <span class="tick">PGAS</span>
+          <span class="what"><span class="kind">Scheduled · ex-dividend</span>
+            IDR 74 per share · expected drop <span class="drop">−2.1%</span></span>
+        </div>
+        <div class="chip sched">
+          <span class="when"><time datetime="2026-09-25">Thu 25 Sep</time></span>
+          <span class="tick">BBCA</span>
+          <span class="what"><span class="kind">Scheduled · general meeting</span>
+            Annual general meeting · <span class="src">corporate action ↗</span></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h3>Later · Oct–Nov</h3>
+      <div class="rows">
+        <div class="chip pred">
+          <span class="when"><time datetime="2026-10-22">22–28 Oct</time></span>
+          <span class="tick">BBCA</span>
+          <span class="what"><span class="kind">Predicted · quarterly report</span>
+            Window fitted from 9 years of its own filing dates
+            <div class="conf"><span class="bar"><i style="width:76%"></i></span><span class="v">76% confidence</span></div></span>
+        </div>
+        <div class="chip pred">
+          <span class="when"><time datetime="2026-10-26">26–31 Oct</time></span>
+          <span class="tick">BBRI</span>
+          <span class="what"><span class="kind">Predicted · quarterly report</span>
+            7 of its last 9 reports landed inside the window we would have drawn
+            <div class="conf"><span class="bar"><i style="width:82%"></i></span><span class="v">82% confidence</span></div></span>
+        </div>
+        <div class="chip pred">
+          <span class="when"><time datetime="2026-10-29">29 Oct–4 Nov</time></span>
+          <span class="tick">ICBP</span>
+          <span class="what"><span class="kind">Predicted · quarterly report</span>
+            Window from 11 years of filing dates
+            <div class="conf"><span class="bar"><i style="width:71%"></i></span><span class="v">71% confidence</span></div></span>
+        </div>
+        <div class="chip pred">
+          <span class="when">—</span>
+          <span class="tick">ANTM</span>
+          <span class="what"><span class="kind">No window</span>
+            This issuer's filing dates vary too widely to predict. We are not drawing a window.
+            <div class="note">A ±3-week band dressed up as a forecast is worse than saying nothing.</div></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><i class="sw"></i>Fact — it happened, official record attached</span>
+      <span><i class="sw s"></i>Scheduled — the issuer dated it</span>
+      <span><i class="sw p"></i>Predicted — we computed it, window + confidence</span>
+    </div>
+  </section>
+
+  <!-- ============================== MONTH ============================== -->
+  <section id="p-month" role="tabpanel" aria-labelledby="t-month" hidden>
+    <div class="mhead">
+      <button class="ghost" type="button" aria-disabled="true" title="Fixtures cover September 2026">←</button>
+      <h2>September 2026</h2>
+      <button class="ghost" type="button" aria-disabled="true" title="Fixtures cover September 2026">→</button>
+      <span class="sp"></span><span class="faint mono" style="font-size:11px">market-wide</span>
+    </div>
+    <p class="note">Every date carries what happened, or what is scheduled to. On a phone this collapses to
+      one dot per class — the grid is the pattern view, the agenda is the product.</p>
+
+    <div class="dow"><span>MON</span><span>TUE</span><span>WED</span><span>THU</span><span>FRI</span><span>SAT</span><span>SUN</span></div>
+    <div class="grid">
+      <div class="cell out"><span class="d">31</span></div>
+      <div class="cell"><span class="d">1</span><span class="mini">6 filings</span><span class="mini">news</span><div class="dots"><i></i><i></i></div></div>
+      <div class="cell"><span class="d">2</span><span class="mini">4 filings</span><div class="dots"><i></i></div></div>
+      <div class="cell"><span class="d">3</span><span class="mini">ADRO ex-div</span><span class="mini">9 filings</span><div class="dots"><i></i><i></i></div></div>
+      <div class="cell"><span class="d">4</span><span class="mini">2 filings</span><span class="mini">news</span><div class="dots"><i></i><i></i></div></div>
+      <div class="cell wknd"><span class="d">5</span></div>
+      <div class="cell wknd"><span class="d">6</span></div>
+
+      <div class="cell"><span class="d">7</span><span class="mini">11 filings</span><span class="mini">MDKA susp.</span><div class="dots"><i></i><i></i></div></div>
+      <div class="cell"><span class="d">8</span><span class="mini">5 filings</span><div class="dots"><i></i></div></div>
+      <div class="cell"><span class="d">9</span><span class="mini">3 filings</span><span class="mini">news</span><div class="dots"><i></i><i></i></div></div>
+      <div class="cell"><span class="d">10</span><span class="mini">ANTM filing</span><span class="mini">7 filings</span><span class="more">+2</span><div class="dots"><i></i><i></i></div></div>
+      <div class="cell today" aria-current="date"><span class="d">11 · today</span><span class="mini">ASII filing</span><span class="mini">ICBP news</span><div class="dots"><i></i><i></i></div></div>
+      <div class="cell wknd"><span class="d">12</span></div>
+      <div class="cell wknd"><span class="d">13</span></div>
+
+      <div class="cell"><span class="d">14</span><div class="dots"></div></div>
+      <div class="cell"><span class="d">15</span><span class="mini">news</span><div class="dots"><i></i></div></div>
+      <div class="cell"><span class="d">16</span><span class="mini s">BMRI EGM</span><div class="dots"><i class="s"></i></div></div>
+      <div class="cell"><span class="d">17</span><div class="dots"></div></div>
+      <div class="cell"><span class="d">18</span><span class="mini s">SMGR ex-div</span><div class="dots"><i class="s"></i></div></div>
+      <div class="cell wknd"><span class="d">19</span></div>
+      <div class="cell wknd"><span class="d">20</span></div>
+
+      <div class="cell"><span class="d">21</span><div class="dots"></div></div>
+      <div class="cell"><span class="d">22</span><span class="mini s">UNVR ex-div</span><div class="dots"><i class="s"></i></div></div>
+      <div class="cell"><span class="d">23</span><span class="mini s">TLKM ex-div</span><span class="mini s">−4.3%</span><div class="dots"><i class="s"></i></div></div>
+      <div class="cell"><span class="d">24</span><span class="mini s">PGAS ex-div</span><div class="dots"><i class="s"></i></div></div>
+      <div class="cell"><span class="d">25</span><span class="mini s">BBCA AGM</span><div class="dots"><i class="s"></i></div></div>
+      <div class="cell wknd"><span class="d">26</span></div>
+      <div class="cell wknd"><span class="d">27</span></div>
+
+      <div class="cell"><span class="d">28</span><div class="dots"></div></div>
+      <div class="cell"><span class="d">29</span><div class="dots"></div></div>
+      <div class="cell"><span class="d">30</span><div class="dots"></div></div>
+      <div class="cell out"><span class="d">1</span><span class="mini p">predicted</span><div class="dots"><i class="p"></i></div></div>
+      <div class="cell out"><span class="d">2</span></div>
+      <div class="cell out wknd"><span class="d">3</span></div>
+      <div class="cell out wknd"><span class="d">4</span></div>
+    </div>
+
+    <div class="legend">
+      <span><i class="sw"></i>Fact</span><span><i class="sw s"></i>Scheduled</span>
+      <span><i class="sw p"></i>Predicted</span><span>Weekend cells dimmed — IDX does not trade, and an empty weekend is information</span>
+    </div>
+  </section>
+
+  <!-- ============================== DAY ============================== -->
+  <section id="p-day" role="tabpanel" aria-labelledby="t-day" hidden>
+    <p class="kicker">One date · everything on it</p>
+    <div class="mhead"><h2>Tuesday 23 September 2026</h2></div>
+
+    <p class="kicker">Scheduled · 2</p>
+    <div class="daycard">
+      <div class="chip sched">
+        <span class="when mono">ex-div</span><span class="tick">TLKM</span>
+        <span class="what"><span class="kind">Cash dividend · ex-date</span>
+          IDR 168 per share on a 3,890 close · expected drop <span class="drop">−4.3%</span>
+          <div class="note">Computed, not quoted: dividend ÷ last close. <span class="src">corporate action ↗</span></div></span>
+      </div>
+      <div class="chip sched">
+        <span class="when mono">ex-div</span><span class="tick">JPFA</span>
+        <span class="what"><span class="kind">Cash dividend · ex-date</span>
+          IDR 31 per share · expected drop <span class="drop">−1.6%</span>
+          <div class="note"><span class="src">corporate action ↗</span></div></span>
+      </div>
+    </div>
+
+    <p class="kicker">Facts · 4</p>
+    <div class="daycard">
+      <div class="chip fact">
+        <span class="when mono">filings</span><span class="tick">market</span>
+        <span class="what"><span class="kind">Insider transactions</span>
+          8 filings across 6 issuers · <span class="src">filing records ↗</span></span>
+      </div>
+      <div class="chip fact">
+        <span class="when mono">suspension</span><span class="tick">XXXX</span>
+        <span class="what"><span class="kind">Trading suspension</span>
+          Reason as stated by IDX · <span class="src">IDX PDF ↗</span></span>
+      </div>
+      <div class="chip fact">
+        <span class="when mono">report</span><span class="tick">BRIS</span>
+        <span class="what"><span class="kind">Quarterly report filed</span>
+          Q2 2026 · <span class="src">filing date record ↗</span></span>
+      </div>
+      <div class="chip fact">
+        <span class="when mono">news</span><span class="tick">market</span>
+        <span class="what"><span class="kind">News</span>
+          14 headlines · context only, no causal claim</span>
+      </div>
+    </div>
+
+    <p class="kicker">Predicted · 0</p>
+    <div class="empty">No predicted window falls on this date. The nearest is <span class="mono">BBCA, 22–28 Oct</span>.</div>
+  </section>
+
+  <!-- ============================== TICKER ============================== -->
+  <section id="p-ticker" role="tabpanel" aria-labelledby="t-ticker" hidden>
+    <p class="kicker">One company · past and ahead</p>
+    <div class="mhead"><h2 class="mono">BBRI</h2><span class="sp"></span><span class="faint mono" style="font-size:11px">2 credits spent · cached</span></div>
+
+    <p class="kicker">Ahead</p>
+    <div class="rows">
+      <div class="chip pred">
+        <span class="when"><time datetime="2026-10-26">26–31 Oct</time></span>
+        <span class="tick">Q3 report</span>
+        <span class="what"><span class="kind">Predicted</span>
+          Median filing day ± robust deviation over 9 years of its own filings
+          <div class="conf"><span class="bar"><i style="width:82%"></i></span><span class="v">82% confidence</span></div></span>
+      </div>
+    </div>
+
+    <p class="kicker">Prediction accuracy · out-of-sample</p>
+    <div class="hr">
+      <span class="big">7<span class="faint">/9</span></span>
+      <span class="barwide"><i style="width:78%"></i></span>
+      <span class="muted" style="font-size:12px">past reports that landed inside the window</span>
+    </div>
+    <p class="note">Each row predicts one quarter using <b>only the quarters before it</b> — walk-forward, no
+      look-ahead. This is measurable today; waiting for Q3 2026 to land would give n = 0 before the deadline.</p>
+    <div class="tw">
+      <table>
+        <thead><tr><th>Quarter</th><th>Window we would have drawn</th><th>Actually filed</th><th>Result</th></tr></thead>
+        <tbody>
+          <tr><td class="mono">Q2 2026</td><td class="mono">27 Jul – 1 Aug</td><td class="mono">30 Jul</td><td class="hit mono">inside</td></tr>
+          <tr><td class="mono">Q1 2026</td><td class="mono">24 – 30 Apr</td><td class="mono">28 Apr</td><td class="hit mono">inside</td></tr>
+          <tr><td class="mono">Q4 2025</td><td class="mono">3 – 9 Feb</td><td class="mono">12 Feb</td><td class="miss mono">3 d late</td></tr>
+          <tr><td class="mono">Q3 2025</td><td class="mono">26 Oct – 1 Nov</td><td class="mono">29 Oct</td><td class="hit mono">inside</td></tr>
+          <tr><td class="mono">Q2 2025</td><td class="mono">26 Jul – 1 Aug</td><td class="mono">31 Jul</td><td class="hit mono">inside</td></tr>
+          <tr><td class="mono">Q1 2025</td><td class="mono">23 – 29 Apr</td><td class="mono">25 Apr</td><td class="hit mono">inside</td></tr>
+          <tr><td class="mono">Q4 2024</td><td class="mono">2 – 8 Feb</td><td class="mono">7 Feb</td><td class="hit mono">inside</td></tr>
+          <tr><td class="mono">Q3 2024</td><td class="mono">25 – 31 Oct</td><td class="mono">18 Oct</td><td class="miss mono">7 d early</td></tr>
+          <tr><td class="mono">Q2 2024</td><td class="mono">25 – 31 Jul</td><td class="mono">30 Jul</td><td class="hit mono">inside</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="kicker">Behind</p>
+    <div class="rows">
+      <div class="chip fact">
+        <span class="when"><time datetime="2026-07-30">30 Jul</time></span><span class="tick">report</span>
+        <span class="what"><span class="kind">Quarterly report filed</span> Q2 2026 · <span class="src">filing date record ↗</span></span>
+      </div>
+      <div class="chip fact">
+        <span class="when"><time datetime="2026-04-15">15 Apr</time></span><span class="tick">ex-div</span>
+        <span class="what"><span class="kind">Cash dividend · effective</span> IDR 319 per share · <span class="src">corporate action ↗</span></span>
+      </div>
+      <div class="chip fact">
+        <span class="when"><time datetime="2026-03-18">18 Mar</time></span><span class="tick">AGM</span>
+        <span class="what"><span class="kind">General meeting · held</span> Annual general meeting · <span class="src">corporate action ↗</span></span>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Forewarned · demo shell for plan.md v2</span>
+    <span>fixtures as of 11 Sep 2026 08:12 WIB</span>
+    <span>run 0042 · 12 credits · 38 cache hits</span>
+    <span>research tooling, not investment advice</span>
+  </footer>
+</div>
+
+<script>
+  // Two behaviours, and nothing else: the four routes, and the theme the design system already ships.
+  const tabs = [...document.querySelectorAll('.tab')];
+  const show = id => tabs.forEach(t => {
+    const on = t.id === id;
+    t.setAttribute('aria-selected', String(on));
+    document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+  });
+  tabs.forEach(t => t.addEventListener('click', () => show(t.id)));
+  tabs.forEach((t, i) => t.addEventListener('keydown', e => {
+    const d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+    if (!d) return;
+    e.preventDefault();
+    const n = tabs[(i + d + tabs.length) % tabs.length];
+    n.focus(); show(n.id);
+  }));
+
+  const btn = document.getElementById('theme');
+  const dark = () => (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark';
+  const paint = () => btn.textContent = dark() ? 'Light' : 'Dark';
+  btn.addEventListener('click', () => { document.documentElement.dataset.theme = dark() ? 'light' : 'dark'; paint(); });
+  paint();
+</script>
