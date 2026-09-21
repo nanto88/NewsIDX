@@ -432,7 +432,7 @@ test("the hover card's calendar link is an all-day event on the right day", () =
   // An empty day ahead is a blank reminder, not an agenda of nothing.
   const blank = new URL(gcalUrl(cell({}), false));
   assert.equal(blank.searchParams.get("text"), "IDX reminder");
-  assert.match(blank.searchParams.get("details") ?? "", /Nothing on the Forewarned record/);
+  assert.match(blank.searchParams.get("details") ?? "", /Nothing on the NewsIDX record/);
   assert.doesNotMatch(blank.searchParams.get("text") ?? "", /0 IDX/);
 
   // Fixture data must not land unmarked in somebody's real calendar.

@@ -148,7 +148,7 @@ export class Client {
     }
 
     const res = await fetch(url, {
-      headers: { Authorization: key, Accept: "application/json", "User-Agent": "forewarned/0.1" }, // raw key, no Bearer prefix
+      headers: { Authorization: key, Accept: "application/json", "User-Agent": "newsidx/0.1" }, // raw key, no Bearer prefix
     });
     if (!res.ok) {
       let body: unknown;

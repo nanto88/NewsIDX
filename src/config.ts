@@ -12,7 +12,7 @@ import { today } from "./dates.js";
 // Getting this wrong puts data/ under dist/data/, where it accumulates stale
 // credit totals that nothing clears.
 const here = path.dirname(fileURLToPath(import.meta.url));
-export const ROOT = process.env.FOREWARNED_HOME ?? path.resolve(here, "..", "..");
+export const ROOT = process.env.NEWSIDX_HOME ?? path.resolve(here, "..", "..");
 
 export const BASE_URL = "https://api.sectors.app";
 
@@ -75,7 +75,7 @@ export const DATA_DIR = path.join(ROOT, "data");
  * read-through to a sibling project's on-disk cache, so calls it already paid
  * for cost this project nothing. */
 export const SHARED_CACHE_DIR = process.env.SHARED_CACHE_DIR?.trim() || null;
-export const DB_PATH = process.env.FOREWARNED_DB ?? path.join(DATA_DIR, "forewarned.db");
+export const DB_PATH = process.env.NEWSIDX_DB ?? path.join(DATA_DIR, "newsidx.db");
 
 /** The watchlist a bare `/` shows. The URL's `?w=` always wins (plan.md §4a). */
 export function defaultWatchlist(): string[] {

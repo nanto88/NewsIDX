@@ -38,7 +38,7 @@ const from = shift(today, poll ? -3 : -BACKFILL_DAYS);
 const id = startRun(con, poll ? "daily poll" : "backfill");
 
 console.log(
-  `forewarned ${poll ? "poll" : "backfill"} ${from} → ${today} · ${spentBefore} credits spent to date · ${mockMode() ? "MOCK_MODE" : "live"}`
+  `newsidx ${poll ? "poll" : "backfill"} ${from} → ${today} · ${spentBefore} credits spent to date · ${mockMode() ? "MOCK_MODE" : "live"}`
 );
 
 try {

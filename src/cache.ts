@@ -5,7 +5,7 @@
  * front. One table is simpler and, more to the point, queryable -- "what have
  * we actually paid for?" is now a SELECT rather than a directory listing:
  *
- *   sqlite3 data/forewarned.db \
+ *   sqlite3 data/newsidx.db \
  *     "SELECT fetched_at, url FROM api_cache ORDER BY fetched_at DESC LIMIT 10;"
  *
  * Values never expire. A closed trading day's data does not change, and a

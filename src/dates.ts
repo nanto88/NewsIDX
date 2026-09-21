@@ -18,13 +18,13 @@ export function shift(iso: string, days: number): string {
 /**
  * Today, as the whole process understands it.
  *
- * FOREWARNED_TODAY pins it -- the fixture demo runs on a fixed date, and a
+ * NEWSIDX_TODAY pins it -- the fixture demo runs on a fixed date, and a
  * renderer reading the wall clock while the data layer reads the pin is how
  * the month pulse ended up labelled "what happened" on the current month.
  * One reader of the variable, so the two can never disagree again.
  */
 export function today(): string {
-  const v = process.env.FOREWARNED_TODAY?.trim();
+  const v = process.env.NEWSIDX_TODAY?.trim();
   return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : new Date().toISOString().slice(0, 10);
 }
 

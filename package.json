@@ -1,5 +1,5 @@
 {
-  "name": "forewarned",
+  "name": "newsidx",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -9,9 +9,9 @@
   "scripts": {
     "build": "tsc -p .",
     "test": "tsc -p . && node --test dist/src/*.test.js",
-    "demo": "tsc -p . && MOCK_MODE=1 FOREWARNED_TODAY=2026-09-11 FOREWARNED_HOME=./demo node dist/scripts/demo.js",
+    "demo": "tsc -p . && MOCK_MODE=1 NEWSIDX_TODAY=2026-09-11 NEWSIDX_HOME=./demo node dist/scripts/demo.js",
     "serve": "tsc -p . && node --env-file-if-exists=.env dist/src/server.js",
-    "demo:serve": "tsc -p . && MOCK_MODE=1 FOREWARNED_TODAY=2026-09-11 FOREWARNED_HOME=./demo node dist/src/server.js",
+    "demo:serve": "tsc -p . && MOCK_MODE=1 NEWSIDX_TODAY=2026-09-11 NEWSIDX_HOME=./demo node dist/src/server.js",
     "backfill": "tsc -p . && node --env-file-if-exists=.env dist/scripts/backfill-run.js",
     "probes": "tsc -p . && node --env-file-if-exists=.env dist/scripts/probes.js"
   },

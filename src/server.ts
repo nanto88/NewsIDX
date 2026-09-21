@@ -345,4 +345,4 @@ app.post("/ticker/ask", async (req, reply) => {
 app.setNotFoundHandler((_req, reply) => reply.redirect("/"));
 
 const address = await app.listen({ port: port(), host: "0.0.0.0" });
-console.log(`forewarned listening on ${address} (${mockMode() ? "MOCK_MODE fixtures" : "live Sectors data"}, today=${runToday()})`);
+console.log(`newsidx listening on ${address} (${mockMode() ? "MOCK_MODE fixtures" : "live Sectors data"}, today=${runToday()})`);

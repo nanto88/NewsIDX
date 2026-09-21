@@ -43,7 +43,7 @@ try {
   endRun(con, id, client.spent, client.calls.filter((c) => c.source === "cache").length);
 
   console.log(`
-forewarned — fixture run for ${today}
+newsidx — fixture run for ${today}
   window           ${from} → ${today}
   market facts     ${facts.written} chips${facts.truncated.length ? ` (page cap hit: ${facts.truncated.join(", ")})` : ""}
   report facts     ${reports}

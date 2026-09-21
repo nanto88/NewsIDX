@@ -3,14 +3,14 @@
   "autoPort": true,
   "configurations": [
     {
-      "name": "forewarned-demo",
+      "name": "newsidx-demo",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "demo:serve"],
       "port": 3000,
       "autoPort": true
     },
     {
-      "name": "forewarned",
+      "name": "newsidx",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "serve"],
       "port": 3000,

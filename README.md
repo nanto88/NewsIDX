@@ -1,21 +1,24 @@
-**PUBLIC** — Forewarned. Research tooling, not investment advice.
+**PUBLIC**. NewsIDX is research tooling, not investment advice.
 
-# Forewarned — which of your IDX holdings has an event coming
+# NewsIDX
 
-You find out your stock had an event when the price gaps. Forewarned shows which of
-**your** names has an event in the next 90 days — dated when the issuer dated it,
-predicted with a confidence window when nobody dated it, and priced when the effect is
-mechanical.
+### Know which of your IDX holdings has an event coming, before the price tells you
 
-**Track 03 — Market Intelligence.** Built on the Sectors API v2.
+Most of us find out our stock had an event when we open the app and see a gap. The dividend
+went ex yesterday. The general meeting was last week. Three of your names reported in the
+same five days and you only noticed the one that moved.
 
-> For Indonesian retail investors holding a handful of IDX names: the ex-dividend drop that
-> looks like bad news, the general meeting nobody told you about, and the week three of your
-> eight names all report at once.
+NewsIDX is a calendar for the next 90 days that only shows the companies you actually
+hold. Where the issuer published a date, it shows that date. Where nobody published one, it
+shows a window it worked out from the company's own past behaviour, and tells you how often
+that method has been right. Where the effect is arithmetic, like an ex-dividend drop, it
+shows the number and the maths behind it.
+
+**Track 03, Market Intelligence.** Built on the Sectors API v2.
 
 ---
 
-## Try it in three commands — no API key, no network
+## Try it in one line
 
 ```bash
 npm install && npm run demo && npm run demo:serve
@@ -23,115 +26,123 @@ npm install && npm run demo && npm run demo:serve
 
 Open <http://localhost:3000>.
 
-`npm run demo` builds the whole database from fixtures — the same pipeline, the same SQL and
-the same renderers a live run uses — so the product works end to end with no key. Every
-number it produces is fabricated, and every page says so in a banner.
+No API key, no network, nothing to sign up for. `npm run demo` builds the entire database
+from fixtures and runs it through the same pipeline, the same SQL and the same page
+renderers a live run uses, so what you see is the real product. The numbers in it are made
+up, and every page says so in a banner.
 
 ---
 
-# For end users
+# If you just want to use it
 
-## What you get
-
-Four pages, server-rendered, no login:
+## The four pages
 
 | Page | URL | What it answers |
 |---|---|---|
-| **Agenda** | `/` | What is coming for *my* names in the next 90 days, plus the board of the whole market |
-| **Month** | `/month` | The whole market's month, and which stories need attention |
+| **Agenda** | `/` | What's coming for *my* names in the next 90 days, plus a board of the whole market |
+| **Month** | `/month` | The market's whole month, and which stories are worth a look |
 | **Day** | `/day?d=2026-09-21` | Everything on the record for one date |
-| **Ticker** | `/ticker?s=BBCA` | One company: its events, its fitted rhythm, its history |
+| **Ticker** | `/ticker?s=BBCA` | One company: its events, its rhythm, its history |
 
-## Features
+No login, no accounts. Your watchlist lives in the URL (`?w=BBCA,BBRI,TLKM`), so you can
+bookmark it or send it to someone.
 
-**The agenda**
-- **Your watchlist, 90 days ahead** — set it with `?w=BBCA,BBRI,TLKM` in the URL or the
-  `WATCHLIST` env var. Everything else on the page stays market-wide.
-- **Three kinds of certainty, three shapes** — facts, issuer-scheduled dates, and predicted
-  windows never look alike. See [How to read a chip](#how-to-read-a-chip).
-- **The cluster warning** — "Three of your eight names land in the week of 21 Sep."
-- **The board** — the 200 largest IDX names as one treemap, grouped into the eleven IDX
-  sectors, sized by market capitalisation, coloured by the last closed session's move.
-  Hover a tile for what was on the record for that company over the preceding three days —
-  filings and suspensions first, then headlines, each with its date and source — or
-  **"nothing on the record"**, which is most tiles. **Fullscreen** hands it to the browser's
-  own fullscreen; the treemap is percentages, so it fills whatever shape it is given.
-- **A price strip** — IHSG (the whole exchange) or LQ45 (the 45 most liquid names).
+## What it does
 
-**The numbers the API does not return**
-- **Tone, as a percentage.** Sectors tags its own news `Bullish` and `Bearish`; we count
-  them into a share, per event (±3 days around its date) and per page. 60/40 or wider is a
-  call, anything between is "mixed", and no tagged stories shows as nothing rather than 50%.
-- **The mechanical ex-dividend drop.** `dividend ÷ last close`, with the basis and the close
-  printed beside it. No close on record means no number — a percentage with no denominator is
-  not a claim. The chip says the quiet part out loud: *holders are not losing 4.3%, they are
-  receiving it.*
-- **A fitted window for a recurring event**, from the company's own ex-dividend and
-  general-meeting history, scored walk-forward — each past occurrence predicted using only
-  the ones before it, so the accuracy is measurable today rather than in a year.
+**Your 90 days, at a glance**
 
-**Needs attention** (`/month`)
-- The month's stories **threaded**, so one press release run by four sources is one row.
-- Ranked by how hard a story was picked up against that name's own usual rate — and, the
-  part only this product can do, whether it **lands on top of a date the issuer already
-  published**: *"3 different sources in 2 days, 7 days before its general meeting."*
-- Nothing here is called viral. There is no share count in the data, and pickup counts
-  distinct sources, which is a floor on attention paid and never a measure of reach.
+* Only your names. Set the watchlist in the URL or with the `WATCHLIST` env var. Everything
+  else on the page stays market-wide, so you don't lose sight of the rest.
+* Three kinds of certainty, drawn three different ways, so you never mistake a guess for a
+  schedule. See [how to read a chip](#how-to-read-a-chip) below.
+* A heads-up when your month bunches: *"three of your eight names land in the week of 21 Sep."*
+* A board of the 200 biggest IDX companies as one treemap, grouped by sector, sized by market
+  cap and coloured by the last session's move. Hover any tile and you get what was on the
+  record for that company over the past three days: filings and suspensions first, then
+  headlines, each with a date and a source. Most tiles say **"nothing on the record"**,
+  because most days most companies do nothing, and we'd rather say that than leave a blank.
+  There's a fullscreen button if you want it on a second screen.
+* A price strip along the top, either IHSG for the whole exchange or LQ45 for the 45 most
+  liquid names.
 
-**Per ticker** (`/ticker?s=…`)
-- Every event on the record, with its official source link.
-- The fitted rhythm and its out-of-sample hit rate, with *n* beside it.
-- **A plain-language summary and FAQ**, written by Claude from rows already in the database
-  and cited by index into a list we handed it — so a link on the page can only point at a
-  record we own. Needs `ANTHROPIC_API_KEY`; without it the button renders disabled.
-  MOCK_MODE serves a fixture instead, so the demo needs no key.
-- **Ask a question** about that company, answered from the same rows.
+**Numbers the API doesn't give you, that we work out**
+
+* **Tone, as a percentage.** Sectors tags its own news bullish or bearish. We count those
+  tags into a share, both around a single event (three days either side) and across a page.
+  60/40 or wider counts as a call. Anything narrower is "mixed". If nothing was tagged we
+  show nothing at all, rather than a meaningless 50%.
+* **The ex-dividend drop.** Dividend divided by the last close, with both the dividend and
+  the close printed right next to it so you can check the sum. If we have no close on record
+  we show no number, because a percentage without a denominator isn't a claim. And the chip
+  says the thing people get wrong out loud: you are not losing 4.3%, you are receiving it.
+* **A window for events that repeat.** Fitted from the company's own ex-dividend and general
+  meeting history, then scored walk-forward, which means every past occurrence was predicted
+  using only the ones before it. That's why we can tell you the hit rate today instead of
+  asking you to wait a year to find out.
+
+**Worth a look** (on `/month`)
+
+* Stories get threaded, so one press release carried by four outlets is one row and not four.
+* Then ranked by how hard it was picked up compared to that company's own usual rate, and,
+  the bit nothing else does, whether it lands on top of a date the issuer already published.
+  *"3 different sources in 2 days, 7 days before its general meeting."*
+* We never call anything viral. There are no share counts in this data, and counting distinct
+  sources tells you the floor on attention paid, never the reach.
+
+**One company at a time** (`/ticker?s=...`)
+
+* Every event we hold, each linked to its official record.
+* The fitted rhythm and how often it has been right, with the sample size next to it.
+* A plain-language summary and FAQ. Claude writes these from rows already in our database and
+  cites them by position in a list we hand it, so a link on the page can only ever point at a
+  record we own. Needs `ANTHROPIC_API_KEY`; without one the button is simply disabled. The
+  demo serves a fixture, so it works with no key.
+* An ask box for questions about that company, answered from the same rows.
 
 ## How to read a chip
 
-The only natively forward-dated field in the whole API is `upcoming_dividend`. The past is
-dense and the future is sparse, so a calendar that renders both tenses the same way either
-looks empty ahead or passes a guess off as a schedule.
+The Sectors API has exactly one field that natively points forward: `upcoming_dividend`. The
+past is dense, the future is thin. A calendar that draws both the same way either looks empty
+ahead of today, or quietly passes off a guess as a schedule. So we draw three shapes.
 
-| Class | Certainty | How it renders |
+| What it is | How sure we are | How it looks |
 |---|---|---|
-| **Fact** | It happened. Official record attached | Solid fill |
-| **Scheduled** | The issuer dated it | Solid fill, cyan left rule |
-| **Predicted** | We computed it from the company's own rhythm | Dashed outline, a **window** never a date, plus a confidence measured out of sample |
+| **Fact** | It happened, and the official record is attached | Solid fill |
+| **Scheduled** | The issuer published this date | Solid fill with a cyan rule down the left |
+| **Predicted** | We worked it out from the company's own rhythm | Dashed outline, always a window and never a single date, with a confidence measured out of sample |
 
-Three shapes, not three colours — colour alone fails colour-blind readers and fails a
-compressed video.
+Shapes rather than colours, because colour on its own fails colour-blind readers, and it also
+fails on a compressed video.
 
-## What it will not tell you
+## What it won't tell you
 
-- **No macro events.** Sectors holds no rate, CPI or GDP data. Sourcing them elsewhere would
-  make Sectors removable, and the UI must never imply macro coverage.
-- **No price-reaction distributions** ("this name usually moves 7% on results") — that depends
-  on an unmeasured `/v2/daily/` clamp and a whole price-window subsystem.
-- **No earnings-date prediction.** See [the finding that changed the
-  design](#the-finding-that-changed-the-design).
-- **Not investment advice.** News is context, never causation: chips say what was published
-  that day and nothing more.
+* **Nothing macro.** Sectors holds no rate, CPI or GDP data, and pulling that from somewhere
+  else would make Sectors removable from this product. So the UI never hints at macro coverage.
+* **No "this name usually moves 7% on results".** That needs a price-window subsystem and an
+  API limit we haven't measured.
+* **No earnings-date prediction.** There's a good reason, and it's [further down](#the-thing-that-changed-the-design).
+* **Not advice.** News here is context, never cause. A chip tells you what was published that
+  day and stops there.
 
 ---
 
-# For developers
+# If you want to run or change it
 
-## Requirements
+## What you need
 
-Node ≥ 20. No bundler, no framework, no webfont download, no Docker. Three runtime
-dependencies: `fastify`, `better-sqlite3`, `@anthropic-ai/sdk`.
+Node 20 or newer. That's it. No bundler, no frontend framework, no webfont to download, no
+Docker. Three runtime dependencies: `fastify`, `better-sqlite3` and `@anthropic-ai/sdk`.
 
 ## Running against live data
 
-Copy `.env.example` to `.env` and put a Sectors key in it, then:
+Copy `.env.example` to `.env`, put a Sectors key in it, then:
 
 ```bash
-npm run probes                # ~12 credits: measure the things the design depends on
-npm run backfill              # 90 days of market-wide facts + the watchlist's per-ticker fill
-npm run backfill -- --reports # optional, ~32 credits: the market-wide report feed
+npm run probes                # ~12 credits, measures the API behaviours the design assumes
+npm run backfill              # 90 days of market-wide facts, plus the watchlist's per-ticker fill
+npm run backfill -- --reports # optional, ~32 credits, the market-wide report feed
 npm run backfill -- --poll    # the cheap daily shape
-npm run serve                 # http://localhost:3000  (PORT overrides)
+npm run serve                 # http://localhost:3000, or set PORT
 ```
 
 ## Scripts
@@ -139,62 +150,69 @@ npm run serve                 # http://localhost:3000  (PORT overrides)
 | Command | What it does |
 |---|---|
 | `npm run build` | `tsc -p .` |
-| `npm test` | Builds, then runs 99 `node --test` tests |
-| `npm run demo` | Builds the fixture database (`./demo`), no key, no network |
-| `npm run demo:serve` | Serves that database in MOCK_MODE |
-| `npm run backfill` | API responses → rows |
-| `npm run probes` | Measures the API behaviours the design assumes |
+| `npm test` | Builds, then runs 99 tests through `node --test` |
+| `npm run demo` | Builds the fixture database into `./demo`. No key, no network |
+| `npm run demo:serve` | Serves that database in mock mode |
+| `npm run backfill` | Turns API responses into rows |
+| `npm run probes` | Measures the API behaviours the design depends on |
 | `npm run serve` | Serves the live database |
 
 ## Environment
 
-All optional except `SECTORS_API_KEY` for live runs. Full commentary in `.env.example`.
+Everything is optional except `SECTORS_API_KEY` for live runs. `.env.example` has the longer
+commentary on each one.
 
 | Variable | Effect |
 |---|---|
-| `SECTORS_API_KEY` | Sectors API v2 key. Required for `backfill`, `probes`, live `serve` |
-| `ANTHROPIC_API_KEY` | Enables the `/ticker` summary, FAQ and ask box. Unset = disabled button |
-| `FAQ_MODEL` | Which model writes them. Default `claude-sonnet-5` |
-| `WATCHLIST` | Default watchlist when the URL carries no `?w=` |
-| `INDEX_SYMBOL` | Overrides the price-strip default (see below) |
-| `SHARED_CACHE_DIR` | Read-through to a sibling project's on-disk cache — those calls cost 0 |
-| `MOCK_MODE=1` | Fixtures, no key, no network |
-| `PORT` | Default 3000 |
-| `FOREWARNED_HOME` | Database directory. Default `./data` |
-| `FOREWARNED_TODAY` | Pins "today", for reproducible demos |
+| `SECTORS_API_KEY` | Sectors API v2 key. Needed for `backfill`, `probes` and a live `serve` |
+| `ANTHROPIC_API_KEY` | Turns on the ticker summary, FAQ and ask box. Leave it unset and the button is disabled |
+| `FAQ_MODEL` | Which model writes them. Defaults to `claude-sonnet-5` |
+| `WATCHLIST` | The default watchlist when the URL has no `?w=` |
+| `INDEX_SYMBOL` | Overrides the price strip's default subject |
+| `SHARED_CACHE_DIR` | Read-through to a sibling project's cache. Anything it already paid for costs 0 here |
+| `MOCK_MODE=1` | Fixtures. No key, no network |
+| `PORT` | Defaults to 3000 |
+| `NEWSIDX_HOME` | Where the database lives. Defaults to `./data` |
+| `NEWSIDX_TODAY` | Pins what "today" means, for reproducible demos |
 
-**What `WATCHLIST` scopes.** Only the per-ticker calls — corporate actions and quarterly
-dates, which produce the scheduled chips and the fitted windows. Filings, suspensions and
-news are market-wide range calls with no symbol filter, so the database holds facts for every
-listed company; the watchlist filters the *agenda*, while `/month` and `/day` show the whole
-market. That asymmetry is the credit strategy: one page of filings covers ~950 companies,
-and one corporate-actions call covers one.
+### What the watchlist actually scopes
 
-**Responses are cached in the database**, in `api_cache`, keyed by URL and never expiring —
-so "what have we actually paid for?" is a query:
+Only the per-ticker calls, which means corporate actions and quarterly dates, which in turn
+produce the scheduled chips and the fitted windows. Filings, suspensions and news are
+market-wide range calls with no symbol filter, so the database ends up holding facts for
+every listed company. The watchlist filters your *agenda*; `/month` and `/day` still show the
+whole market.
+
+That asymmetry is the whole credit strategy. One page of filings covers about 950 companies.
+One corporate-actions call covers one.
+
+### Seeing what you've paid for
+
+Responses are cached in the database itself, in `api_cache`, keyed by URL and never expiring.
+So the question "what have we actually spent credits on?" is just a query:
 
 ```bash
-sqlite3 data/forewarned.db "SELECT fetched_at, url FROM api_cache ORDER BY fetched_at DESC LIMIT 10;"
+sqlite3 data/newsidx.db "SELECT fetched_at, url FROM api_cache ORDER BY fetched_at DESC LIMIT 10;"
 ```
 
-## Repo map
+## Where things live
 
 | File | What it is |
 |---|---|
 | `src/predict.ts` | The derived layer: the two fits, the falsifier, the ex-dividend arithmetic |
-| `src/attention.ts` | Headline threading, the nearest dated event, and the ranked "needs attention" list |
-| `src/calendar.ts` | View models. Facts and scheduled rows join predicted windows here, never in the database |
-| `src/backfill.ts` | API responses → rows. Market-wide ranges, then bounded per-ticker fills |
-| `src/db.ts` | Tables for events, tickers, prices, the board, the FAQ cache, the response cache and the run ledger; one write path, idempotent upserts |
-| `src/api.ts` | Credit ceiling, documented-cost assertion, permanent cache, MOCK_MODE |
+| `src/attention.ts` | Threading headlines, finding the nearest dated event, ranking what's worth a look |
+| `src/calendar.ts` | View models. Facts and scheduled rows meet predicted windows here, never in the database |
+| `src/backfill.ts` | API responses into rows. Market-wide ranges first, then bounded per-ticker fills |
+| `src/db.ts` | Tables for events, tickers, prices, the board, the FAQ cache, the response cache and the run ledger. One write path, idempotent upserts |
+| `src/api.ts` | The credit ceiling, the documented-cost assertion, the permanent cache, mock mode |
 | `src/heatmap.ts` | The board: a squarified treemap of the 200 largest IDX names |
-| `src/faq.ts` | The one place a model is used: phrasing rows we already hold |
+| `src/faq.ts` | The one place a model is involved, phrasing rows we already hold |
 | `src/render.ts` | Server-rendered HTML |
 | `src/server.ts` | The routes: agenda, month, day, ticker, and the two FAQ endpoints |
-| `src/mock/fixtures.ts` | Fabricated data in the API's own response shapes |
-| `demo.html` | The static design mockup the UI was built from |
-| `plan.md` | The build plan, including what was deliberately left out |
-| `METHODOLOGY.md` | How every number on the page is made, and what it does not claim |
+| `src/mock/fixtures.ts` | Made-up data in the API's own response shapes |
+| `demo.html` | The static mockup the UI was built from |
+| `plan.md` | The build plan, including what got deliberately cut |
+| `METHODOLOGY.md` | How every number on the page is made, and what none of them claim |
 
 ## Tests
 
@@ -202,75 +220,77 @@ sqlite3 data/forewarned.db "SELECT fetched_at, url FROM api_cache ORDER BY fetch
 npm test
 ```
 
-99 tests covering the fit, the falsifier, the walk-forward scoring, the bucketing, the
-idempotent upsert, the escaping, the treemap's geometry, and a token-drift assertion that
-fails if a single design-system hex value changes.
+99 of them, covering the fit, the falsifier, the walk-forward scoring, the bucketing, the
+idempotent upsert, HTML escaping, the treemap geometry, and one assertion that fails if a
+single design-system hex value drifts.
 
-## Credits
+## About the credits
 
-The hackathon allowance is **1,000 per team and shared with a sibling project**, so this one
-enforces its own ceiling of **275**, cumulative across runs, in `config.ts` and asserted on
-every call in `api.ts`. The fixture demo spends 20 (fictional) credits for a complete database.
+The hackathon allowance is 1,000 per team, shared with a sibling project, so this one holds
+itself to 275 across all runs. The ceiling lives in `config.ts` and gets asserted on every
+call in `api.ts`. The fixture demo spends 22 imaginary credits and builds a complete database.
 
-| Lever | Effect |
+| What we do | Why it's cheap |
 |---|---|
-| Market-wide range calls over per-ticker loops | one `/v2/filings/` page covers every listed company |
-| Per-ticker calls cached forever | corporate actions do not change retroactively — the second run is free |
-| `SHARED_CACHE_DIR` read-through to a sibling project's cache | calls it has already paid for cost 0 here |
-| The expected-drop number reuses closes the backfill already bought | the arithmetic costs nothing on top of the price strip |
-| `?since=` polling on the report feed | a full sweep is ~32 pages; an incremental poll is one |
-| Daily closes fetched in the backfill, never on a page view | 1 credit per name buys 90 days; browsing can never spend |
-| The market-wide price strip is one index series, not 950 | 1 credit colours the default calendar for everybody |
-| The board is `/v2/companies/` | sector, market cap and daily change for 200 companies in **one** call — the per-ticker alternative is 200 credits against a 275 ceiling, which is to say it would not exist |
+| Market-wide range calls instead of per-ticker loops | one `/v2/filings/` page covers every listed company |
+| Per-ticker calls cached forever | corporate actions don't change retroactively, so the second run is free |
+| `SHARED_CACHE_DIR` reads a sibling project's cache | anything it already bought costs nothing here |
+| The expected-drop number reuses closes the backfill already bought | the arithmetic is free on top of the price strip |
+| `?since=` polling on the report feed | a full sweep is ~32 pages, an incremental poll is one |
+| Closes fetched during backfill, never on a page view | 1 credit per name buys 90 days, and browsing can never spend |
+| One index series for the price strip, not 950 tickers | 1 credit colours the default calendar for everyone |
+| The board is a single `/v2/companies/` call | sector, market cap and daily change for 200 companies at once. Per-ticker it would be 200 credits against a 275 ceiling, which is to say it wouldn't exist |
 
-Every run writes a row to `run` with what it spent, which is where the ceiling reads its
-lifetime total from. Nothing in the served UI spends a credit except the bounded on-demand
-fill for a symbol nobody has fetched yet (`FILL_ON_DEMAND`, and always on in MOCK_MODE).
+Every run writes what it spent to the `run` table, and that's where the ceiling reads its
+lifetime total from. Nothing in the served UI can spend a credit, except the bounded
+on-demand fill for a symbol nobody has fetched before (`FILL_ON_DEMAND`, always on in mock mode).
 
 ---
 
-## The finding that changed the design
+## The thing that changed the design
+
+We started out intending to predict earnings dates. Then we read the endpoint properly.
 
 `/v2/company/get_quarterly_financial_dates/` is documented as supplying `report_date` values
-to feed the quarterly-financials endpoint, and its example is `2026: [["2026-03-31","q1"]]`
-— a quarter **end**, not the day anybody filed. The market-wide feed is the same shape.
+to feed the quarterly-financials endpoint, and its own example is `2026: [["2026-03-31","q1"]]`.
+That's a quarter *end*, not the day anybody filed anything. The market-wide feed has the same
+shape.
 
-So there is no filing rhythm in that data to fit, and the earnings-date prediction the plan
-started from has no source. Two consequences, both in the code:
+Which means there is no filing rhythm in that data to fit, and the earnings prediction we'd
+planned had no source underneath it. Two things follow, and both are in the code:
 
-- **Every report chip states it, on the chip** — *"the feed carries the period (quarter end),
-  not the date this was filed"*, with the date we first saw the row, which is the only
-  timing fact we actually hold. No report window is drawn anywhere in the product, and
-  `predict.ts` does not have a quarterly fit to disable.
-- **The rhythm fit moved to data that is verified to vary** — `corporate_actions.dividend[].ex_date`
-  and `agm[].agm_date`, which carry genuinely different dates year to year. Those are the
-  only two kinds `predictionsFor()` will fit, and the list is a constant you can read.
+* **Every report chip says so, on the chip.** "The feed carries the period (quarter end), not
+  the date this was filed", along with the date we first saw the row, which is the only
+  timing fact we genuinely hold. No report window is drawn anywhere in the product, and
+  `predict.ts` doesn't have a quarterly fit sitting there switched off.
+* **The rhythm fit moved to data we verified does vary.** `corporate_actions.dividend[].ex_date`
+  and `agm[].agm_date` carry genuinely different dates year to year. Those two are the only
+  kinds `predictionsFor()` will fit, and that list is a constant you can go and read.
 
-A window we cannot draw is stated, not widened. A ±3-week band dressed up as a forecast is
-worse than saying nothing.
+A window we can't draw gets stated, not widened. A three-week band dressed up as a forecast
+is worse than saying nothing.
 
-The same logic governs the price strip: which ticker Sectors' `/v2/daily/` actually answers
-for IHSG or LQ45 is UNVERIFIED — `npm run probes` (Q16) measures it, and `INDEX_SYMBOL`
-overrides the default. A subject that returns no rows renders as a plain grid, never as an
-average of the watchlist wearing the index's name.
+The price strip follows the same rule. Which ticker Sectors' `/v2/daily/` actually answers for
+IHSG or LQ45 is unverified. `npm run probes` (Q16) measures it, and `INDEX_SYMBOL` overrides
+the default. A subject that returns no rows renders as a plain grid, never as an average of
+your watchlist wearing the index's name.
 
-## Honesty rules the code enforces
+## Rules the code keeps
 
-1. A predicted chip never renders as a scheduled one — different shape, a window, and the
-   word "predicted".
-2. Every fact chip links its official record. A fact without a source is an assertion.
-3. News is context, never causation: chips say what was published that day and nothing more.
-4. A window we cannot draw is stated, not widened.
-5. The hit rate says how it was measured, with *n* beside it.
+1. A predicted chip never renders like a scheduled one. Different shape, a window, and the
+   word "predicted" on it.
+2. Every fact chip links its official record. A fact without a source is just an assertion.
+3. News is context, never cause. Chips say what was published that day, and nothing more.
+4. A window we can't draw gets stated, not widened.
+5. The hit rate always says how it was measured, with the sample size beside it.
 6. **No model decides anything.** Every date, window, percentage and refusal on the page is
-   computed by `predict.ts` and `calendar.ts` from rows in the database — `predict.ts` does
-   not import a model and never will. Claude appears in exactly one place, the `/ticker`
-   summary and FAQ, where it *phrases* rows we already hold and cites them by index into a
-   list we gave it, so a link on the page can only point at a record we own. It never
-   browses, never recalls, and is never the source of a number.
+   computed by `predict.ts` and `calendar.ts` from rows in the database. `predict.ts` does not
+   import a model and never will. Claude shows up in exactly one place, the ticker summary and
+   FAQ, where it phrases rows we already hold and cites them by index into a list we handed
+   it. It never browses, never recalls, and is never the source of a number.
 
-`METHODOLOGY.md` is one page on how each number is computed, and what none of them claim.
+`METHODOLOGY.md` is a single page on how each number is made, and what none of them claim.
 
-## Not built, deliberately
+## Deliberately not built
 
 Accounts, portfolio import, notifications, Docker, any client-side framework.

@@ -1,4 +1,4 @@
-**INTERNAL** — Forewarned. Research tooling, not investment advice.
+**INTERNAL** — NewsIDX. Research tooling, not investment advice.
 
 # How every number on the page is made
 

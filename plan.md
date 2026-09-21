@@ -1,11 +1,11 @@
 INTERNAL
 
-# Forewarned — build plan v2
+# NewsIDX — build plan v2
 
-**You find out your stock had an event when the price gaps. Forewarned tells you first.**
+**You find out your stock had an event when the price gaps. NewsIDX tells you first.**
 
 > **Problem statement (submission field):** For Indonesian retail investors holding a
-> handful of IDX names — Forewarned shows which of *your* holdings has an event in the next
+> handful of IDX names — NewsIDX shows which of *your* holdings has an event in the next
 > 90 days, dated when the issuer dated it, predicted with a confidence window when nobody
 > dated it, and priced when the effect is mechanical.
 
@@ -36,7 +36,7 @@ map (§10), MOCK_MODE as non-negotiable.
 
 ## 1. Who it is for, and the one moment it has to win
 
-| Persona (`research.md` §5) | The moment Forewarned exists for |
+| Persona (`research.md` §5) | The moment NewsIDX exists for |
 |---|---|
 | **Holder of 8 names, no idea which files this week** | Opens the app, sees "BBRI reports 26–31 Oct (82% confidence) · TLKM ex-div Tue 23 Sep" |
 | **Seller who panicked on an ex-dividend drop** | Sees "ex-div 23 Sep · expected drop −4.3% · this is not bad news" **before** the print |
@@ -207,16 +207,16 @@ Four levers, in order of payoff:
 | On-demand fills (judges, extra names) | 20 × 2 | 40 |
 | Daily poll | 2/day × 14 days + weekly qtr-dates | 32 |
 | Video / demo re-runs | everything cached by then | 15 |
-| **Forewarned subtotal** | | **164** |
-| Forewarned reserve | | 110 |
-| **Forewarned committed** | | **275** |
+| **NewsIDX subtotal** | | **164** |
+| NewsIDX reserve | | 110 |
+| **NewsIDX committed** | | **275** |
 | SentryX committed | their §11b-i | 233 |
 | **Joint committed** | | **508** |
 | **Joint headroom** | | **492** |
 
 Enforce it in code, not in this table: `config.ts` already carries `ALLOWANCE`,
 `DAILY_CREDIT_CAP` and `RESERVE`, and `api.ts` asserts the documented cost on every call.
-Set Forewarned's own ceiling to 275 and a daily cap of 40 — **a cumulative cap is the one
+Set NewsIDX's own ceiling to 275 and a daily cap of 40 — **a cumulative cap is the one
 that matters; at 1,000 credits a per-day cap alone still lets a fortnight spend everything.**
 
 Steady state after the cache fills is ~2 credits a day.
@@ -343,5 +343,5 @@ confidence, backtest) · `backfill.ts` (range fetch → date index).
 
 ---
 
-> Directory note: requested as `forewardned`, created as `forewarned` to match the product
+> Directory note: requested as `forewardned`, created as `newsidx` to match the product
 > name. Rename if the typo was deliberate.

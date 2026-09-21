@@ -795,7 +795,7 @@ export function page(s: Shell): string {
 ${s.mock ? `<div class="mock mono">MOCK_MODE · fixture data, no API key, no network · every number on this page is fabricated</div>` : ""}
 <div class="wrap">
   <header class="top">
-    <a class="brand" href="/${qs(s.watchlist)}" style="text-decoration:none"><span class="dot"></span>Forewarned <small>IDX event agenda</small></a>
+    <a class="brand" href="/${qs(s.watchlist)}" style="text-decoration:none"><span class="dot"></span>NewsIDX <small>IDX event agenda</small></a>
     <span class="sp"></span>
     <button class="ghost" id="theme" type="button">Light</button>
   </header>
@@ -1733,9 +1733,9 @@ export function gcalUrl(c: Cell, mock: boolean): string {
       : `${c.total} IDX event${c.total === 1 ? "" : "s"}`;
   const lines = c.total
     ? c.items.map((i) => `- ${kindLabel(i.kind)}: ${i.symbol ? `${i.symbol} ` : ""}${i.title}`)
-    : ["Nothing on the Forewarned record for this day when the reminder was set."];
+    : ["Nothing on the NewsIDX record for this day when the reminder was set."];
   if (c.total > c.items.length) lines.push(`- ...and ${c.total - c.items.length} more`);
-  lines.push("", "Added from Forewarned. Research tooling, not investment advice.");
+  lines.push("", "Added from NewsIDX. Research tooling, not investment advice.");
   const q = new URLSearchParams({
     action: "TEMPLATE",
     text: mock ? `[DEMO DATA] ${title}` : title,
@@ -1874,7 +1874,7 @@ export function renderMonth(
     .join("");
 
   return page({
-    title: "Forewarned IDX Agenda",
+    title: "NewsIDX Agenda",
     active: "agenda",
     watchlist,
     mock: opts.mock,
@@ -1949,7 +1949,7 @@ export function renderDay(
       : `<div class="empty">${esc(emptyNote ?? "Nothing on this date.")}</div>`);
 
   return page({
-    title: "Forewarned IDX Agenda",
+    title: "NewsIDX Agenda",
     active: "agenda",
     watchlist,
     mock: opts.mock,
@@ -2216,7 +2216,7 @@ export function renderTicker(
   const shown = t.behind.filter((i) => i.kind === "news" && matchesTag(i, tag)).length;
 
   return page({
-    title: "Forewarned IDX Agenda",
+    title: "NewsIDX Agenda",
     active: "ticker",
     watchlist,
     mock: opts.mock,
