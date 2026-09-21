@@ -59,7 +59,13 @@ bookmark it or send it to someone.
 | **Ex-dividend arithmetic** | Dividend over last close, with both inputs printed beside it so you can check the sum |
 | **Tone as a percentage** | Bullish and bearish news tags counted into a share, per event and per page. Nothing tagged shows nothing, not a meaningless 50% |
 | **Cluster warning** | A heads-up when your month bunches: *"three of your eight names land in the week of 21 Sep"* |
-| **The board** | 200 largest IDX names as one treemap, grouped by sector, sized by market cap, coloured by the last session's move. Hover for what was on the record |
+| **The board (sector heatmap)** | A treemap of the 200 largest IDX names, grouped into the eleven IDX sectors, sized by market cap and coloured by the last session's move. Hover a tile for what was on the record. Opens fullscreen for a second screen |
+| **Topic filter** | Filter any page down to one topic. Counts are computed before the filter is applied, so an option never vanishes the moment you use it |
+| **Google Calendar export** | Any day on the calendar exports as an all-day event carrying that day's agenda. An empty day still exports, so you can park your own reminder |
+| **Price strip picker** | Price the window against IHSG, LQ45, or one company you pick. A subject with no rows renders as a plain grid, never as a fake average |
+| **Watchlist editing in the page** | Add and remove names without touching the URL by hand |
+| **"How we worked this out"** | Every ticker page shows the inputs behind its own numbers, inline |
+| **Light and dark themes** | A toggle in the header. No third-party requests and no webfont, in either theme |
 | **Worth a look** | The month's stories threaded so one press release carried by four outlets is one row, then ranked by pickup against that name's own usual rate |
 | **Event collision** | Flags a story that lands on top of a date the issuer already published: *"3 sources in 2 days, 7 days before its general meeting"* |
 | **Per-ticker summary and FAQ** | Claude phrases rows already in the database and cites them by position, so a link can only point at a record we own |
@@ -301,6 +307,11 @@ sources tells you the floor on attention paid, never the reach.
 rhythm and its hit rate, a plain-language summary and FAQ, and an ask box for questions about
 that company. The summary needs `ANTHROPIC_API_KEY`; without one the button is simply
 disabled, and the demo serves a fixture so it works with no key.
+
+**On every page**: a topic filter whose counts are computed before the filter is applied, a
+price strip you can point at IHSG, LQ45 or a single company, a watchlist you can edit in place,
+a light and dark theme toggle, and a Google Calendar export on each day cell that carries that
+day's agenda as an all-day event.
 
 Nothing in the served UI can spend a credit, except the bounded on-demand fill for a symbol
 nobody has fetched before (`FILL_ON_DEMAND`, always on in mock mode).
