@@ -128,6 +128,33 @@ export const STYLE = `
 
   .wrap{max-width:780px;margin:0 auto;padding:0 16px 56px}
 
+  /* ---------------- the dashboard shell ----------------
+     780px is a reading column, which is right for a day or a company and
+     wrong for the agenda: on a 1440px screen it left 660px of empty gutter
+     and stacked four blocks into three and a half screens of scrolling.
+     So the agenda opts into a second track. Everything below 1200px stays
+     exactly as it was -- one column, in the order the page reads. */
+  .dash{display:grid;gap:8px}
+  @media (min-width:1200px){
+    .wrap.wide{max-width:1340px}
+    .dash{
+      grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);
+      grid-template-areas:"board attention" "month headlines";
+      column-gap:28px;
+      align-items:start;
+    }
+    /* minmax(0,…) on both tracks: without it the treemap's own width wins the
+       negotiation and pushes the second column off the page. */
+    .dash-board{grid-area:board}
+    .dash-attention{grid-area:attention;min-width:0}
+    .dash-month{grid-area:month;min-width:0}
+    .dash-headlines{grid-area:headlines;min-width:0}
+    /* The first thing in a column supplies its own top margin; a second
+       track would otherwise start lower than the first for no reason. */
+    .dash-attention > .kicker:first-child,
+    .dash-headlines > .kicker:first-child{margin-top:0}
+  }
+
   /* ---------------- chrome ---------------- */
   .mock{background:var(--primary-wash);border-bottom:1px solid var(--border);
         font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;
@@ -798,6 +825,15 @@ export interface Shell {
   /** A route-specific filter bar, under the companies bar and above the view
    * tabs. Only /month has one. */
   filters?: string;
+  /**
+   * Opt in to the dashboard shell: a wider column on a big screen, and the
+   * body laid out in two tracks instead of one.
+   *
+   * Only the agenda asks for it. A day and a company page are prose and a
+   * list, and prose set 1300px wide is harder to read, not easier -- the
+   * width is worth taking only where there is a second thing to put in it.
+   */
+  wide?: boolean;
 }
 
 export function page(s: Shell): string {
@@ -811,7 +847,7 @@ export function page(s: Shell): string {
 </head>
 <body>
 ${s.mock ? `<div class="mock mono">MOCK_MODE · fixture data, no API key, no network · every number on this page is fabricated</div>` : ""}
-<div class="wrap">
+<div class="wrap${s.wide ? " wide" : ""}">
   <header class="top">
     <a class="brand" href="/${qs(s.watchlist)}" style="text-decoration:none"><span class="dot"></span>NewsIDX <small>IDX event agenda</small></a>
     <span class="sp"></span>
@@ -1954,10 +1990,18 @@ export function renderMonth(
         ? `${opts.pulse.total} headline${opts.pulse.total === 1 ? "" : "s"} tagged ${tagPhrase(opts.pulse.tag)}`
         : `All ${opts.pulse.topics.length} tag${opts.pulse.topics.length === 1 ? "" : "s"} on record shown`,
     }),
+    wide: true,
     // The board is what just happened, so it leads; the calendar and the
-    // headlines under it are what is coming and what has been said.
-    body: `${renderBoard(opts.board ?? null)}
-    ${attentionSection(opts.attention, watchlist)}
+    // headlines beside it are what is coming and what has been said.
+    //
+    // Reading order is board, attention, month, headlines, and that is the
+    // DOM order too -- the two-track layout is grid-area placement on top of
+    // it, so narrow screens, a screen reader and tab order all still get the
+    // single column in the order the page was written.
+    body: `<div class="dash">
+    <section class="dash-board">${renderBoard(opts.board ?? null)}</section>
+    <section class="dash-attention">${attentionSection(opts.attention, watchlist)}</section>
+    <section class="dash-month">
     <h2 class="mtitle">${esc(monthLabel(ym))}</h2>
     <nav class="pager" aria-label="Month">
       ${step("prev", `/?month=${prev}${w}`, "Previous", monthLabel(prev))}
@@ -1983,7 +2027,9 @@ export function renderMonth(
     <div class="dow">${dow}</div>
     <div class="grid">${grid}</div>
     ${legend("Weekend cells dimmed — IDX does not trade, and an empty weekend is information")}
-    ${pulseSection(opts.pulse, watchlist, { month: ym, price: opts.priceSymbol ?? undefined })}`,
+    </section>
+    <section class="dash-headlines">${pulseSection(opts.pulse, watchlist, { month: ym, price: opts.priceSymbol ?? undefined })}</section>
+    </div>`,
   });
 }
 

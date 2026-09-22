@@ -666,3 +666,43 @@ test("the default state says every topic is showing, rather than looking switche
   const on = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("Dividend") });
   assert.ok(!/class="tag all"/.test(on), "and it goes away once a topic is picked");
 });
+
+test("the agenda takes the desktop width; a day and a company stay a reading column", () => {
+  const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
+  const agenda = renderMonth([], "2026-09", [], {
+    ...opts,
+    pulse: { from: "2026-09-01", to: "2026-09-30", tag: "", who: "", headlines: [], total: 0, page: 1, pages: 1, offset: 0, topics: [], tickers: [] },
+  });
+  assert.match(agenda, /<div class="wrap wide">/, "the agenda opts in");
+
+  // Prose set 1300px wide is harder to read, not easier, so the shell only
+  // widens for a page that asks. Asserted on the shell itself: that is the
+  // one place the decision is made.
+  const shell = (wide?: boolean) =>
+    page({ title: "t", active: "agenda", watchlist: [], body: "", mock: false, asOf: null, credits: null, wide });
+  assert.match(shell(true), /<div class="wrap wide">/);
+  assert.match(shell(), /<div class="wrap">/, "and stays a reading column by default");
+  assert.ok(!/wrap wide/.test(shell()));
+});
+
+test("the dashboard is one column until there is room for two, and reads in order either way", () => {
+  // The second track exists only above 1200px. Everything under it is the
+  // single column the page was written as.
+  assert.match(STYLE, /@media \(min-width:1200px\)\{[\s\S]*?\.wrap\.wide\{max-width:1340px\}/);
+  assert.match(STYLE, /grid-template-areas:"board attention" "month headlines"/);
+
+  // Both tracks need minmax(0,…): without it the treemap's intrinsic width
+  // wins the negotiation and shoves the second column off the page.
+  assert.match(STYLE, /grid-template-columns:minmax\(0,1\.5fr\) minmax\(0,1fr\)/);
+
+  const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
+  const agenda = renderMonth([], "2026-09", [], {
+    ...opts,
+    pulse: { from: "2026-09-01", to: "2026-09-30", tag: "", who: "", headlines: [], total: 0, page: 1, pages: 1, offset: 0, topics: [], tickers: [] },
+  });
+  // Placement is grid-area, so DOM order stays the reading order: a screen
+  // reader and the tab key get board, attention, month, headlines.
+  const order = ["dash-board", "dash-attention", "dash-month", "dash-headlines"].map((c) => agenda.indexOf(c));
+  assert.deepEqual(order, [...order].sort((a, b) => a - b), "DOM order is the reading order");
+  assert.ok(order.every((i) => i > -1), "and every track is present");
+});

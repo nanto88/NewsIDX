@@ -364,6 +364,13 @@ rhythm and its hit rate, a plain-language summary and FAQ, and an ask box for qu
 that company. The summary needs `ANTHROPIC_API_KEY`; without one the button is simply
 disabled, and the demo serves a fixture so it works with no key.
 
+**The layout.** Below 1200px the agenda is one column, in the order it reads. Above it the
+shell widens to 1340px and the four blocks move into two tracks: the board beside what needs
+attention, the month grid beside the headlines. Placement is grid-area on top of the original
+DOM order, so a screen reader and the tab key still get board, attention, month, headlines
+whatever the width. A day and a company page stay a 780px reading column, because prose set
+1300px wide is harder to read, not easier.
+
 **On every page**: a multi-select topic filter that defaults to every topic, a
 price strip you can point at IHSG, LQ45 or a single company, a watchlist you can edit in place,
 a light and dark theme toggle, and a Google Calendar export on each day cell that carries that
