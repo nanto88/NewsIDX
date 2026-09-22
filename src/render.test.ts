@@ -643,3 +643,26 @@ test("a selection of topics reads as a list, not as one odd topic", () => {
   );
   assert.match(tagPhrase('Div<script>"'), /&lt;script&gt;/, "and a label out of the API cannot inject");
 });
+
+test("the default state says every topic is showing, rather than looking switched off", () => {
+  const pulse = (tag: string) => ({
+    from: "2026-09-01", to: "2026-09-30", tag, who: "", headlines: [], total: 0,
+    page: 1, pages: 1, offset: 0,
+    topics: [{ label: "Dividend", n: 4 }, { label: "Bullish", n: 3 }],
+    tickers: [],
+  });
+  const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
+
+  const off = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("") });
+  assert.match(off, /class="tag all">All 2 tags on record</, "nothing picked reads as everything showing");
+  assert.match(off, /All 2 tags on record shown/, "and the count agrees");
+
+  // The all-pill is the primary wash, NOT the orange that means a filter is
+  // narrowing the page -- otherwise 'showing everything' and 'showing less'
+  // would look the same.
+  assert.match(STYLE, /\.tb \.tag\.all\{color:var\(--primary-dark\)/);
+  assert.ok(!/\.tb \.tag\.all\{[^}]*var\(--on\)/.test(STYLE), "and never wears the filter-is-on colour");
+
+  const on = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("Dividend") });
+  assert.ok(!/class="tag all"/.test(on), "and it goes away once a topic is picked");
+});

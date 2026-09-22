@@ -300,7 +300,20 @@ fails on a compressed video.
 ### How the Topic filter selects
 
 Nothing picked means every topic. That is the default, and a filter nobody has touched must
-not hide anything.
+not hide anything. The bar says so rather than leaving you to infer it: with nothing picked it
+carries an **All N tags on record** pill in the product accent, the same affordance the
+companies bar above it uses for **All companies**. A row of grey chips on its own reads as
+"nothing is on" when in fact nothing is being hidden.
+
+So the bar has three states, and they never look alike:
+
+| State | How it reads |
+|---|---|
+| Nothing picked (the default) | The accent-washed **All N tags on record** pill, every chip grey and available |
+| One or more picked | Those chips turn orange with a tick, and a **Clear all** appears. The all-pill goes away |
+| A chip you have not picked | Grey, and clicking it adds it to the selection rather than replacing it |
+
+Orange means the page is showing you less than it has, and it is used for nothing else.
 
 Picking several is OR, not AND. Ticking a second topic widens the page, which is what a reader
 means by ticking a second box, and it stops the filter emptying itself on the many pairs that

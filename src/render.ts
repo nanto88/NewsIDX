@@ -423,6 +423,11 @@ export const STYLE = `
            text-decoration:none}
   .tb .tag b{color:var(--text);font-weight:600}
   .tb .tag.hot{border-color:color-mix(in srgb,var(--primary) 35%,transparent);color:var(--primary-dark)}
+  /* "Everything is showing" is a state, not a button: same treatment as the
+     companies bar's All companies pill, and deliberately not the orange that
+     means a filter is narrowing the page. */
+  .tb .tag.all{color:var(--primary-dark);border-color:color-mix(in srgb,var(--primary) 32%,transparent);
+               background:var(--primary-wash)}
   .tb .tag:hover{border-color:var(--border-strong);color:var(--text)}
   .tb .tag[aria-pressed="true"]{border-color:var(--on);color:var(--on);
            background:var(--on-wash)}
@@ -1229,7 +1234,13 @@ export function tagBar(o: {
     <span class="tb-count mono">${esc(o.count)}</span>
     ${
       o.topics.length
-        ? `<div class="tb-chips" role="group" aria-labelledby="tb-lab">${o.topics
+        ? `<div class="tb-chips" role="group" aria-labelledby="tb-lab">${
+            // The default is every topic, so it gets said out loud. Without
+            // this the chips are all grey and the bar reads as "nothing is
+            // on" when in fact nothing is being hidden -- the same reason the
+            // companies bar carries an "All companies" pill.
+            selected.length ? "" : `<span class="tag all">All ${o.topics.length} tags on record</span>`
+          }${o.topics
             .slice(0, 14)
             .map((t) => {
               const on = isOn(t.label);
@@ -1941,7 +1952,7 @@ export function renderMonth(
       },
       count: opts.pulse.tag
         ? `${opts.pulse.total} headline${opts.pulse.total === 1 ? "" : "s"} tagged ${tagPhrase(opts.pulse.tag)}`
-        : `${opts.pulse.topics.length} tag${opts.pulse.topics.length === 1 ? "" : "s"} on record`,
+        : `All ${opts.pulse.topics.length} tag${opts.pulse.topics.length === 1 ? "" : "s"} on record shown`,
     }),
     // The board is what just happened, so it leads; the calendar and the
     // headlines under it are what is coming and what has been said.
