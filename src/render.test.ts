@@ -10,9 +10,9 @@ import assert from "node:assert/strict";
 
 import { test } from "node:test";
 import { EQUITY_BANDS, INDEX_BANDS } from "./config.js";
-import { chip, domainOf, esc, gcalUrl, page, paginate, pct, priceBand, renderBoard, renderMonth, renderTicker, sentClass, STYLE, tagPhrase } from "./render.js";
+import { chip, domainOf, renderDay, upNext, upNextCsv, esc, gcalUrl, page, paginate, pct, priceBand, renderBoard, renderMonth, renderMovers, renderTicker, sentClass, STYLE, tagPhrase } from "./render.js";
 import type { Cell, Item } from "./calendar.js";
-import type { Board, Tile } from "./heatmap.js";
+import type { Board, Mover, Movers, Tile } from "./heatmap.js";
 
 /** An empty ranking: these tests are about the month chrome, and a populated
  * list would make every assertion below depend on the ranking's own fixtures. */
@@ -87,11 +87,11 @@ test("the two classes render as two different shapes", () => {
 });
 
 test("a headline is green when Sectors tagged it Bullish, red for Bearish, default otherwise", () => {
-  assert.equal(sentClass(bullish), "pos");
-  assert.equal(sentClass(bearish), "neg");
+  assert.equal(sentClass(bullish), "pos tone");
+  assert.equal(sentClass(bearish), "neg tone");
   assert.equal(sentClass(plain), "", "a topic tag gets the page's own colour");
-  assert.match(chip(bullish), /<span class="pos">BBCA raises its dividend<\/span>/);
-  assert.match(chip(bearish), /<span class="neg">BBCA cuts guidance<\/span>/);
+  assert.match(chip(bullish), /<span class="pos tone">BBCA raises its dividend<\/span>/);
+  assert.match(chip(bearish), /<span class="neg tone">BBCA cuts guidance<\/span>/);
   assert.match(chip(plain), /<span class="">BBCA opens a branch<\/span>/);
   // Colour is never the only carrier: the tags themselves are on the chip.
   assert.match(chip(bullish), /Dividend · Bullish/);
@@ -472,6 +472,8 @@ function boardFixture(): Board {
        sourceUrl: "https://example.invalid/a", tags: ["Bullish", "Dividend"], ...over }) as Item;
   return {
     date: "2026-09-11",
+    sector: "",
+    choices: [{ sector: "Financials", n: 2, change: 0.004 }, { sector: "Infrastructures", n: 1, change: -0.01 }],
     newsFrom: "2026-09-09",
     drawn: 3,
     withNotes: 1,
@@ -549,8 +551,8 @@ test("the panel reports what was on the record, never why the price moved", () =
   // Each headline carries its own date, because the window is wider than a day.
   assert.match(html, /News · same day/);
   // Sectors' tag is the colour, on the same classes the rest of the product uses.
-  assert.match(html, /class="t pos"/);
-  assert.match(html, /class="t neg"/);
+  assert.match(html, /class="t pos tone"/);
+  assert.match(html, /class="t neg tone"/);
 });
 
 test("a sector heading drops a percentage it cannot print whole", () => {
@@ -689,7 +691,9 @@ test("the dashboard is one column until there is room for two, and reads in orde
   // The second track exists only above 1200px. Everything under it is the
   // single column the page was written as.
   assert.match(STYLE, /@media \(min-width:1200px\)\{[\s\S]*?\.wrap\.wide\{max-width:1340px\}/);
-  assert.match(STYLE, /grid-template-areas:"board attention" "month headlines"/);
+  // The movers sit under the board: both answer "what just happened", and the
+  // calendar and headlines beside them are what is coming and what was said.
+  assert.match(STYLE, /grid-template-areas:"next next" "movers attention" "month headlines"/);
 
   // Both tracks need minmax(0,…): without it the treemap's intrinsic width
   // wins the negotiation and shoves the second column off the page.
@@ -698,11 +702,212 @@ test("the dashboard is one column until there is room for two, and reads in orde
   const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
   const agenda = renderMonth([], "2026-09", [], {
     ...opts,
+    upcoming: [],
     pulse: { from: "2026-09-01", to: "2026-09-30", tag: "", who: "", headlines: [], total: 0, page: 1, pages: 1, offset: 0, topics: [], tickers: [] },
   });
   // Placement is grid-area, so DOM order stays the reading order: a screen
-  // reader and the tab key get board, attention, month, headlines.
-  const order = ["dash-board", "dash-attention", "dash-month", "dash-headlines"].map((c) => agenda.indexOf(c));
+  // reader and the tab key get the board, then the filters, then up next,
+  // movers, attention, month, headlines.
+  // Matched on the class attribute: the bare names also occur in the <style>.
+  const order = ["lead", "wl", "dash-next", "dash-movers", "dash-attention", "dash-month", "dash-headlines"].map(
+    (c) => agenda.indexOf(`class="${c}"`)
+  );
   assert.deepEqual(order, [...order].sort((a, b) => a - b), "DOM order is the reading order");
   assert.ok(order.every((i) => i > -1), "and every track is present");
+});
+
+// ---------------------------------------------------------------- the movers
+
+function moversFixture(over: Partial<Movers> = {}): Movers {
+  const m = (o: Partial<Mover>): Mover =>
+    ({ rank: 1, symbol: "SOHO", name: "PT Soho Global Health Tbk", change: 0.249,
+       lastClose: 1505, closeDate: "2026-09-11", notes: [], ...o }) as Mover;
+  return {
+    date: "2026-09-11", period: "7d", newsFrom: "2026-09-05", newsTo: "2026-09-11",
+    clamped: false, recordFrom: null, withNotes: 1,
+    gainers: [
+      m({ notes: [{ cls: "fact", kind: "news", symbol: "SOHO", date: "2026-09-10",
+                    title: "Soho lifts guidance", sourceUrl: "https://kontan.invalid/x",
+                    tags: ["Bullish"] } as Item] }),
+      m({ rank: 2, symbol: "MDIA", name: "PT Intermedia Capital Tbk", change: 0.157, lastClose: 250 }),
+    ],
+    losers: [m({ symbol: "KPIG", name: "MNC Tourism Indonesia Tbk", change: -0.197, lastClose: 65 })],
+    ...over,
+  };
+}
+
+test("a mover prints its rank, its move and the close it ended on", () => {
+  const html = renderMovers(moversFixture(), []);
+  assert.match(html, /<a class="tick" href="\/ticker\?symbol=SOHO">SOHO<\/a>/);
+  assert.match(html, /\+24\.9%/);
+  assert.match(html, /Rp1,505/);
+  assert.match(html, /class="mv-ch mono neg">−19\.7%/);
+  // Gainers and losers are two sides of one section, not two sections.
+  assert.match(html, /<h4>Gainers<\/h4>/);
+  assert.match(html, /<h4>Losers<\/h4>/);
+});
+
+test("headlines sit inline, and a mover without any says so", () => {
+  const html = renderMovers(moversFixture(), []);
+  // Inline, not behind a hover: a list has room, and the treemap only hides
+  // them because a 2%-wide tile does not.
+  assert.match(html, /<ul class="mv-notes">/);
+  assert.doesNotMatch(html, /class="tip"/);
+  assert.match(html, /Soho lifts guidance/);
+  // One line: the headline links to its source, then when and where. "News"
+  // is not repeated on every row; any other kind is named.
+  assert.match(html, /<a class="t pos tone" href="https:\/\/kontan\.invalid\/x" target="_blank" rel="noopener noreferrer"/);
+  assert.match(html, /<span class="k">10 Sep · kontan\.invalid<\/span>/);
+  assert.match(html, /Nothing on the record for MDIA between 5 Sep and 11 Sep/);
+});
+
+test("a mover note links only to a web page", () => {
+  const n = (sourceUrl: string, kind = "news") =>
+    ({ cls: "fact", kind, symbol: "SOHO", date: "2026-09-10", title: "t", sourceUrl, tags: [] });
+  const base = moversFixture();
+  const html = renderMovers(
+    { ...base, gainers: [{ ...base.gainers[0], notes: [n("javascript:alert(1)"), n("https://idx.invalid/f", "filing")] as any }] },
+    []
+  );
+  assert.doesNotMatch(html, /href="javascript:/, "a non-http source is text, not a link");
+  assert.match(html, /<span class="k">Insider filing · 10 Sep · idx\.invalid<\/span>/, "and a filing says it is one");
+});
+
+test("the section refuses to say a headline caused the move", () => {
+  const html = renderMovers(moversFixture(), []);
+  assert.match(html, /not the\s+reason it moved/);
+  const list = html.slice(html.indexOf('class="mv-cols"'), html.indexOf("<details"));
+  assert.doesNotMatch(list, /because|caused|due to|drove|on the back of|reason/i);
+});
+
+test("every period is offered, and the current one is not a link", () => {
+  const html = renderMovers(moversFixture(), []);
+  for (const label of ["1 day", "1 week", "2 weeks", "1 month", "1 year"]) {
+    assert.ok(html.includes(label), `${label} missing from the switcher`);
+  }
+  // 7d is current: a span, not an anchor.
+  assert.match(html, /<span class="mv-tab on" aria-current="true">1 week<\/span>/);
+  assert.match(html, /<a class="mv-tab" href="[^"]*movers=30d[^"]*">1 month<\/a>/);
+});
+
+test("switching period keeps the month, the companies and the topic", () => {
+  const html = renderMovers(moversFixture(), ["BBCA"], {
+    month: "2026-09", tag: "Dividend", w: "BBCA", price: "IHSG",
+  });
+  const href = html.match(/href="([^"]*movers=1d[^"]*)"/)![1];
+  for (const part of ["month=2026-09", "tag=Dividend", "w=BBCA", "price=IHSG", "movers=1d"]) {
+    assert.ok(href.includes(part), `${part} dropped from ${href}`);
+  }
+  // And it anchors, so you land on the list you just changed.
+  assert.match(href, /#movers$/);
+});
+
+test("the year view admits the record does not reach back a year", () => {
+  const html = renderMovers(moversFixture({ period: "365d", clamped: true, newsFrom: "2026-06-13" }), []);
+  assert.match(html, /the news record does not reach a full year back/);
+  assert.match(html, /The move is still the full year's; the coverage is not/);
+  // A period inside the record makes no such claim.
+  assert.doesNotMatch(renderMovers(moversFixture(), []), /does not reach a full year back/);
+});
+
+test("no movers renders a sentence rather than a 500", () => {
+  const html = renderMovers(null, []);
+  assert.match(html, /No movers on record yet/);
+  assert.doesNotMatch(html, /undefined|NaN/);
+});
+
+test("a name or headline from the API cannot inject into the movers list", () => {
+  const f = moversFixture();
+  f.gainers[0].name = '<img src=x onerror="alert(1)">';
+  f.gainers[0].notes[0].title = "</div><script>alert(2)</script>";
+  const html = renderMovers(f, []);
+  assert.doesNotMatch(html, /<img src=x/);
+  assert.doesNotMatch(html, /<script>alert\(2\)/);
+});
+
+test("only the board pans sideways on a phone, never the whole page", () => {
+  // A grid item defaults to min-width:auto and so refuses to shrink below its
+  // widest child. The board's child is a deliberate 760px that .board-scroll
+  // pans; without this rule every sibling section inherits that width and the
+  // page itself scrolls sideways on a 375px screen.
+  assert.match(STYLE, /\.dash > section\{min-width:0\}/);
+  // And the thing being contained is still there to contain.
+  assert.match(STYLE, /\.board-scroll\{overflow-x:auto/);
+  assert.match(STYLE, /@media \(max-width:760px\)\{[\s\S]*?\.board\{width:760px/);
+});
+
+// ---------------------------------------------------------------- up next
+
+test("up next counts dated and predicted apart, and names the holdings with nothing ahead", () => {
+  const today = "2026-09-11";
+  const items = [
+    { cls: "scheduled", kind: "agm", symbol: "BMRI", date: "2026-09-16", title: "General meeting" },
+    { cls: "scheduled", kind: "exdiv", symbol: "TLKM", date: "2026-09-23", title: "Cash dividend",
+      drop: { pct: -0.043, basis: "dividend ÷ last close", close: 2710 } },
+    { cls: "predicted", kind: "agm", symbol: "BBCA", date: "2026-09-14", title: "General meeting",
+      window: { from: "2026-09-14", to: "2026-09-28" }, fit: { from: "2026-09-14", to: "2026-09-28", n: 4, spreadDays: 3, trials: 3, hits: 2 } },
+  ] as unknown as Item[];
+  const html = upNext(items, ["BMRI", "TLKM", "BBCA", "ASII"], today);
+  assert.match(html, /Next 7 days<\/div><div class="v">2<\/div>\s*<div class="s">1 dated · 1 predicted/);
+  assert.match(html, /largest drop −4\.3% · TLKM/);
+  assert.match(html, /Nothing on the calendar for <b>ASII<\/b>/);
+  // A predicted row prints a window, never a date.
+  assert.ok(!/Mon 14 Sep/.test(html), "the predicted row carries no single date");
+  assert.match(html, /<i class="sw p"><\/i>Predicted · right 2 of the last 3 times/);
+});
+
+test("the CSV export carries the same rows, and cannot smuggle a formula into a spreadsheet", () => {
+  const items = [
+    { cls: "scheduled", kind: "exdiv", symbol: "TLKM", date: "2026-09-23", title: "=HYPERLINK(\"x\",\"y\")",
+      drop: { pct: -0.043, basis: "dividend ÷ last close", close: 2710 } },
+    { cls: "predicted", kind: "agm", symbol: "BBCA", date: "2026-09-14", title: "General meeting",
+      window: { from: "2026-09-14", to: "2026-09-28" }, fit: { from: "2026-09-14", to: "2026-09-28", n: 4, spreadDays: 3, trials: 3, hits: 2 } },
+  ] as unknown as Item[];
+  const lines = upNextCsv(items, "2026-09-11").trim().split("\r\n");
+  assert.equal(lines.length, 3);
+  assert.match(lines[0], /^date,window_from,window_to,days_to_go,ticker/);
+  assert.match(lines[1], /^2026-09-23,,,12,TLKM,Ex-dividend,"'=HYPERLINK\(""x"",""y""\)",dated by issuer,,-4\.3,2710,$/);
+  // A predicted row has a window and no date, here as on the page.
+  assert.match(lines[2], /^,2026-09-14,2026-09-28,3,BBCA,General meeting,General meeting,predicted,2\/3,,,$/);
+});
+
+test("a mover window older than the news record says unknown, not quiet", () => {
+  // Our headlines start 25 Sep; the move ran 15-21 Sep. "Nothing on the
+  // record" would read as a quiet week when nobody fetched it at all.
+  const html = renderMovers(
+    moversFixture({ newsFrom: "2026-09-15", newsTo: "2026-09-21", recordFrom: "2026-09-25", withNotes: 0 }),
+    []
+  );
+  assert.match(html, /our news record starts 25 Sep — earlier days are unknown, not quiet/);
+  assert.match(html, /our headlines start 25 Sep, so this is unknown, not quiet/);
+  assert.ok(!/Nothing on the record for [A-Z]+ between 15 Sep and 21 Sep\./.test(html));
+});
+
+test("a priced day colours its date the way the close went", () => {
+  assert.match(STYLE, /\.cell\.up1 > \.d,\.cell\.up2 > \.d,\.cell\.up3 > \.d\{color:var\(--up\)\}/);
+  assert.match(STYLE, /\.cell\.dn1 > \.d,\.cell\.dn2 > \.d,\.cell\.dn3 > \.d\{color:var\(--down\)\}/);
+  // After the today rule, so a green or red today is still green or red.
+  assert.ok(STYLE.indexOf(".cell.up1 > .d") > STYLE.indexOf(".cell.today .d{"));
+});
+
+test("a calendar day opens beside the grid, and the day page is where its panel comes from", () => {
+  // The day page wraps its lists in one element the agenda can lift out.
+  const day = renderDay({ date: "2026-09-16", scheduled: [], facts: [] }, [], { mock: false, asOf: null, credits: null });
+  assert.match(day, /<div id="day-panel">[\s\S]*Scheduled · 0[\s\S]*Facts · 0[\s\S]*<\/div>/);
+  // The script swaps the headlines column and can put it back.
+  assert.match(day, /querySelector\('\.dash-headlines'\)/);
+  assert.match(day, /Close · back to the month/);
+  // A modified click is left alone, so the cell is still a real link.
+  assert.match(day, /!e\.metaKey && !e\.ctrlKey/);
+  // And the facts pager inside the panel pages in place rather than leaving.
+  assert.match(day, /closest\('#day-panel \.pager a\[href\]'\)/);
+});
+
+test("the board carries its own sector picker, and every link keeps the rest of the page", () => {
+  const html = renderBoard(boardFixture(), { w: "BBCA,TLKM", movers: "7d" });
+  assert.match(html, /<span class="mv-tab on" aria-current="true">All sectors<\/span>/);
+  assert.match(html, /href="\/\?w=BBCA%2CTLKM&amp;movers=7d&amp;sector=Financials#board"/);
+  const picked = renderBoard({ ...boardFixture(), sector: "Financials" }, {});
+  assert.match(picked, /The board · Financials · 3 names by industry/);
+  assert.match(picked, /href="\/#board">All sectors<\/a>/, "and All sectors clears it");
 });

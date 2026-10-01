@@ -24,7 +24,7 @@ import {
   sentimentOf,
 } from "./calendar.js";
 import { type Attention, contributions } from "./attention.js";
-import type { Board, SectorBox, Tile } from "./heatmap.js";
+import type { Board, IndexReturn, Mover, Movers, SectorBox, Tile } from "./heatmap.js";
 import type { AskRow, FaqRow } from "./db.js";
 import { MAX_QUESTION } from "./faq.js";
 import { fmtPct, hitRateLabel } from "./predict.js";
@@ -37,6 +37,9 @@ import {
   EQUITY_BANDS,
   INDEX_BANDS,
   isIndex,
+  MOVER_LABEL,
+  MOVER_PERIODS,
+  type MoverPeriod,
 } from "./config.js";
 import { daysBetween, fmtLong, fmtRange, fmtShort, fmtWithDay, monthLabel, shift, today as todayIso } from "./dates.js";
 
@@ -86,11 +89,16 @@ export const STYLE = `
     --shadow: 0 1px 2px rgba(0,0,0,.5), 0 12px 28px -10px rgba(0,0,0,.5);
     --ease: cubic-bezier(.2,.7,.3,1);
   }
+  /* Light theme text is darkened from the design system's values on purpose.
+     On white, #a29d94 faint text was 2.6:1 and #2AB673 gain text 2.6:1, below
+     WCAG AA's 4.5:1 for body text; every value here clears 4.5:1 on --bg,
+     --surface and --surface-2. The dark theme keeps the pinned tokens. */
   :root[data-theme="light"]{
     --primary:#0091ea; --primary-light:#40c4ff; --primary-dark:#0064a8;
     --bg:#faf8f6; --surface:#ffffff; --surface-2:#f5f2ef; --surface-3:#efece8;
     --border:#ece8e3; --border-strong:#ddd7cf;
-    --text:#1a1a1a; --text-muted:#6d6a64; --text-faint:#a29d94;
+    --text:#1a1a1a; --text-muted:#57534c; --text-faint:#736e66;
+    --up:#137a45; --down:#c62828;
     --primary-wash: color-mix(in srgb, var(--primary) 11%, transparent);
     --shadow: 0 1px 2px rgba(20,15,5,.04), 0 8px 24px -8px rgba(20,15,5,.08);
   }
@@ -99,7 +107,8 @@ export const STYLE = `
       --primary:#0091ea; --primary-light:#40c4ff; --primary-dark:#0064a8;
       --bg:#faf8f6; --surface:#ffffff; --surface-2:#f5f2ef; --surface-3:#efece8;
       --border:#ece8e3; --border-strong:#ddd7cf;
-      --text:#1a1a1a; --text-muted:#6d6a64; --text-faint:#a29d94;
+      --text:#1a1a1a; --text-muted:#57534c; --text-faint:#736e66;
+    --up:#137a45; --down:#c62828;
       --primary-wash: color-mix(in srgb, var(--primary) 11%, transparent);
       --shadow: 0 1px 2px rgba(20,15,5,.04), 0 8px 24px -8px rgba(20,15,5,.08);
     }
@@ -135,17 +144,33 @@ export const STYLE = `
      So the agenda opts into a second track. Everything below 1200px stays
      exactly as it was -- one column, in the order the page reads. */
   .dash{display:grid;gap:8px}
+  /* A grid item defaults to min-width:auto, so it refuses to shrink below its
+     widest child -- and the board's child is a deliberate 760px that
+     .board-scroll is supposed to pan. Without this every section in the grid
+     inherits that 760px and the whole PAGE scrolls sideways on a phone
+     instead of just the treemap. Declared in the base rule, not the two-track
+     one: the single column is where it actually bites. */
+  .dash > section{min-width:0}
+  /* The board, over the filters. A rule under it says the filters below
+     start there. */
+  .lead{padding-bottom:6px;border-bottom:1px solid var(--border);min-width:0}
+  /* Full width at 16:9 is a whole screen of treemap, and the filters and Up
+     next fall below the fold. Capped, and never under the 400px the sector
+     headings are sized against (BOARD_MIN_H_PX). The phone keeps its own
+     panned 760px board. */
+  @media (min-width:761px){ .lead .board{aspect-ratio:auto;height:clamp(400px,38vw,540px)} }
   @media (min-width:1200px){
     .wrap.wide{max-width:1340px}
     .dash{
       grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);
-      grid-template-areas:"board attention" "month headlines";
+      grid-template-areas:"next next" "movers attention" "month headlines";
       column-gap:28px;
       align-items:start;
     }
     /* minmax(0,…) on both tracks: without it the treemap's own width wins the
        negotiation and pushes the second column off the page. */
-    .dash-board{grid-area:board}
+    .dash-next{grid-area:next}
+    .dash-movers{grid-area:movers;min-width:0}
     .dash-attention{grid-area:attention;min-width:0}
     .dash-month{grid-area:month;min-width:0}
     .dash-headlines{grid-area:headlines;min-width:0}
@@ -196,7 +221,7 @@ export const STYLE = `
   details.why{margin-top:6px}
   details.why > summary{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);
                         cursor:pointer;list-style:none;width:fit-content;
-                        border-bottom:1px dashed var(--border-strong);padding:1px 0}
+                        border-bottom:1px dashed var(--border-strong);padding:5px 0 2px}
   details.why > summary::-webkit-details-marker{display:none}
   details.why > summary::before{content:"▸ ";display:inline-block;transition:transform .12s var(--ease)}
   details.why[open] > summary::before{content:"▾ "}
@@ -229,7 +254,8 @@ export const STYLE = `
   .chip.pred .when,.chip.pred .kind,.chip.pred .what{color:var(--text-muted)}
   .chip.pred .when{font-weight:600}
   details.how{margin-top:5px}
-  details.how summary{font-size:11px;color:var(--text-faint);cursor:pointer;list-style:none}
+  details.how summary{font-size:11px;color:var(--text-faint);cursor:pointer;list-style:none;
+                      min-height:24px;display:flex;align-items:center}
   details.how summary::-webkit-details-marker{display:none}
   details.how summary::before{content:"▸ ";font-size:9px}
   details.how[open] summary::before{content:"▾ "}
@@ -244,6 +270,56 @@ export const STYLE = `
   .sw{width:22px;height:13px;border-radius:4px;border:1px solid var(--border);background:var(--surface-2)}
   .sw.s{box-shadow:inset 2px 0 0 var(--primary)}
   .sw.p{background:none;border-style:dashed}
+
+  /* ---------------- up next: the book's next 90 days, first ----------------
+     The question the product exists to answer, so it opens the page and spans
+     both tracks. Tiles are counts a manager reads in one pass; the table is
+     the same rows sorted by date, so the tiles can be checked against it. */
+  .nx-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap}
+  .nx-csv{font-family:var(--font-mono);font-size:11px;color:var(--primary-dark);text-decoration:none;
+          padding:5px 0;white-space:nowrap}
+  .nx-csv:hover{text-decoration:underline}
+  /* ---------------- a calendar day, opened in the headlines column ---------------- */
+  .dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
+  .dayhead h3{font-size:15px;font-family:var(--font-mono);font-weight:600;outline:none}
+  .dayhead .acts{display:flex;gap:8px;align-items:center}
+  .dayhead .acts a{font-family:var(--font-mono);font-size:11px;color:var(--primary-dark);text-decoration:none;padding:5px 0}
+  .dayhead .acts a:hover{text-decoration:underline}
+  .cellwrap > a.picked > .cell{box-shadow:0 0 0 2px var(--on);border-color:var(--on)}
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 13px;min-width:0}
+  .kpi .k{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint)}
+  .kpi .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;
+          letter-spacing:-.02em;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kpi .v small{font-size:12px;font-weight:500;color:var(--text-muted);letter-spacing:0}
+  .kpi .s{font-size:11.5px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kpi.lead{border-color:color-mix(in srgb,var(--primary) 45%,var(--border));background:
+            linear-gradient(var(--primary-wash),var(--primary-wash)),var(--surface)}
+  /* The wrapper pans on a phone, like the board: the certainty column is the
+     honesty rule in text, so it scrolls rather than being hidden. */
+  .nx-scroll{margin-top:10px;overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px}
+  .nx{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+  .nx th{font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+         color:var(--text-faint);text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .nx td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:baseline}
+  .nx tr:last-child td{border-bottom:0}
+  .nx tbody tr:hover td{background:var(--surface-2)}
+  .nx .r{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .nx .when{font-family:var(--font-mono);font-size:12px;white-space:nowrap}
+  .nx .soon{color:var(--on);font-weight:600}
+  /* The certainty column carries the chip's shape, so the three classes read
+     the same here as everywhere else on the page. */
+  .nx .cert{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-muted);white-space:nowrap}
+  .nx tr.pred td{color:var(--text-muted)}
+  .nx .sw{width:16px;height:10px;border-color:var(--text-faint)}
+  .nx .tickerlink{display:inline-block;padding:5px 0}
+  .nx .more td{font-size:12px;color:var(--text-faint);text-align:center;white-space:normal}
+  .nx td{white-space:nowrap}
+  @media (max-width:880px){
+    .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .kpi .v small{display:block;margin-top:1px}
+  }
+  @media (max-width:640px){ .nx td,.nx th{padding:8px} }
 
   /* ---------------- month grid ---------------- */
   .mhead{display:flex;align-items:center;gap:10px;margin-top:18px}
@@ -372,7 +448,7 @@ export const STYLE = `
   .pop li.s .k{color:var(--primary-dark)}
   .pop li.p{color:var(--text-muted)}
   .pop .more{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);margin-top:6px}
-  .pop .gcal{display:inline-block;margin-top:8px;font-family:var(--font-mono);font-size:10px;
+  .pop .gcal{display:inline-block;margin-top:4px;padding:6px 0;font-family:var(--font-mono);font-size:10px;
              letter-spacing:.05em;color:var(--primary-dark);text-decoration:none}
   .pop .gcal:hover{text-decoration:underline}
   @media (max-width:640px){ .pop{display:none} }
@@ -383,6 +459,9 @@ export const STYLE = `
          nothing else to badge. */
   .pos{color:var(--up)}
   .neg{color:var(--down)}
+  .tone::before{font-size:.8em;text-decoration:none;display:inline-block;margin-right:.3em}
+  .tone.pos::before{content:"▲";content:"▲" / "Bullish:"}
+  .tone.neg::before{content:"▼";content:"▼" / "Bearish:"}
   .sent{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase}
 
   /* --- steppers: one treatment for every prev/next in the product, whether it
@@ -436,6 +515,11 @@ export const STYLE = `
   .cell.dn1 .px,.cell.dn2 .px,.cell.dn3 .px,
   .cell.dn1 .px .c,.cell.dn2 .px .c,.cell.dn3 .px .c,
   .cell.dn1 .px .d,.cell.dn2 .px .d,.cell.dn3 .px .d{color:var(--down)}
+  /* The date takes it too: it is the first thing the eye lands on in a cell,
+     and a grey date over a green close made the day read as neutral. Today
+     keeps its ring, so it stays findable when its date turns green or red. */
+  .cell.up1 > .d,.cell.up2 > .d,.cell.up3 > .d{color:var(--up)}
+  .cell.dn1 > .d,.cell.dn2 > .d,.cell.dn3 > .d{color:var(--down)}
 
   /* --- the topic filter, a full-width bar under the companies bar. Both are
          data filters and they read as one stack; the view tabs below them are
@@ -507,7 +591,7 @@ export const STYLE = `
   .att .why b{font-weight:600;color:var(--text-muted)}
   .att details{margin-top:7px}
   .att summary{cursor:pointer;font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint);
-               list-style:none}
+               list-style:none;padding:5px 0}
   .att summary::-webkit-details-marker{display:none}
   .att summary::before{content:"\\25b8 "}
   .att details[open] summary::before{content:"\\25be "}
@@ -734,6 +818,60 @@ export const STYLE = `
   .board-wrap:fullscreen .board-scroll{flex:1;display:flex}
   .board-wrap:fullscreen .board{flex:1;width:auto;height:auto;aspect-ratio:auto;margin:0}
 
+  /* ---------------- biggest movers ----------------
+     A list, not a picture: these are ranked, five a side, and a ranking wants
+     rows. The headlines sit inline rather than behind a hover -- the treemap
+     hides them because a 2%-wide tile has nowhere to put them, and a list has
+     no such excuse. */
+  .mv-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+  .secpick{margin:2px 0 10px;scroll-margin-top:14px}
+  .idxs{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 8px}
+  .idx{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-family:var(--font-mono);
+       font-size:12px;font-variant-numeric:tabular-nums}
+  .idx .nm{font-weight:600;color:var(--text)}
+  .idx .px{color:var(--text)}
+  .idx .k{font-size:10px;color:var(--text-faint);letter-spacing:.05em}
+  .idx .faint{font-size:10.5px}
+  .secpick .mv-tab span{font-size:10px;margin-left:2px}
+  .mv-tab{font-family:var(--font-mono);font-size:11px;text-decoration:none;
+          color:var(--text-muted);background:var(--surface-2);
+          border:1px solid var(--border);border-radius:999px;padding:4px 11px;min-height:28px;
+          display:inline-flex;align-items:center}
+  .mv-tab:hover{color:var(--text);border-color:var(--border-strong)}
+  .mv-tab.on{color:var(--primary-dark);background:var(--primary-wash);
+             border-color:color-mix(in srgb,var(--primary) 32%,transparent)}
+
+  .mv-cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+  @media (max-width:760px){ .mv-cols{grid-template-columns:1fr} }
+  .mv-side h4{margin:0 0 6px;font-family:var(--font-mono);font-size:10.5px;font-weight:600;
+              letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint)}
+  .mv-side.up h4{color:var(--up)}
+  .mv-side.dn h4{color:var(--down)}
+  .mv-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+  .mv{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px}
+  .mv-hd{display:flex;align-items:baseline;gap:8px}
+  .mv-hd .rk{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);
+             min-width:11px}
+  .mv-hd .tick{font-family:var(--font-mono);font-size:12px;font-weight:600;
+               color:var(--text);text-decoration:none}
+  .mv-hd .tick:hover{color:var(--primary)}
+  .mv-px{font-size:11px;color:var(--text-muted);margin-left:auto}
+  .mv-ch{font-size:12px;font-weight:600}
+  .mv-ch.pos{color:var(--up)} .mv-ch.neg{color:var(--down)}
+  .on-note{color:var(--on)}
+  .mv-nm{margin:2px 0 0 19px;font-size:11.5px;color:var(--text-muted);line-height:1.35}
+  .mv-notes{list-style:none;margin:7px 0 0 19px;padding:7px 0 0;
+            border-top:1px solid var(--border);display:grid;gap:6px}
+  .mv-notes li{font-size:11.5px;line-height:1.35;display:flex;gap:8px;align-items:baseline;min-width:0}
+  .mv-notes .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+               color:var(--text);text-decoration:none;padding:4px 0}
+  .mv-notes a.t:hover{text-decoration:underline}
+  .mv-notes .k{flex:none;font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);
+               letter-spacing:.05em;text-transform:uppercase}
+  .mv-notes .t.pos{color:var(--up)} .mv-notes .t.neg{color:var(--down)}
+  .mv-none{margin:7px 0 0 19px;padding-top:7px;border-top:1px solid var(--border);
+           font-size:11.5px;color:var(--text-faint);line-height:1.35}
+
   .scale{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:8px;
          font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint)}
   .scale .ramp{display:flex;gap:2px}
@@ -825,6 +963,10 @@ export interface Shell {
   /** A route-specific filter bar, under the companies bar and above the view
    * tabs. Only /month has one. */
   filters?: string;
+  /** Drawn ABOVE the filters, straight under the header: for a block no filter
+   * on the page narrows. Position is the promise -- a control sits above what
+   * it controls, so anything placed over the filters must ignore them. */
+  lead?: string;
   /**
    * Opt in to the dashboard shell: a wider column on a big screen, and the
    * body laid out in two tracks instead of one.
@@ -853,6 +995,7 @@ ${s.mock ? `<div class="mock mono">MOCK_MODE · fixture data, no API key, no net
     <span class="sp"></span>
     <button class="ghost" id="theme" type="button">Light</button>
   </header>
+  ${s.lead ? `<section class="lead">${s.lead}</section>` : ""}
   ${watchlistBar(s.watchlist, s.self ?? "/", s.keep ?? {}, s.known ?? [])}
   ${s.filters ?? ""}
   ${nav(s.active, s.watchlist)}
@@ -864,7 +1007,8 @@ ${s.mock ? `<div class="mock mono">MOCK_MODE · fixture data, no API key, no net
   </footer>
 </div>
 <script>
-  // The only script on the page. Navigation is real links; this is the theme
+  // The only script on the page. Navigation is real links -- the calendar
+  // below only shortcuts one of them; this is the theme
   // the design system already ships (plan.md §4d).
   var btn = document.getElementById('theme');
   var dark = function(){ return (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark'; };
@@ -897,6 +1041,72 @@ ${s.mock ? `<div class="mock mono">MOCK_MODE · fixture data, no API key, no net
     });
   });
 
+  // A calendar date opens in the headlines column instead of leaving the page.
+  // The cell stays a real link to /day, so a modified click, a middle click
+  // and a page with no script all still get the full day. The panel is the
+  // day page's own #day-panel, so there is one renderer for a day, not two.
+  (function () {
+    var col = document.querySelector('.dash-headlines');
+    var grid = document.querySelector('.dash-month .grid');
+    if (!col || !grid || !window.fetch || !window.DOMParser) return;
+    var month = null, from = null, seq = 0;
+    var close = function () {
+      if (month === null) return;
+      col.innerHTML = month;
+      month = null;
+      var a = grid.querySelector('a.picked');
+      if (a) a.classList.remove('picked');
+      if (from) from.focus();
+    };
+    var plain = function (e) { return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey; };
+    // Load a day (or one page of its facts) into the column. The cell is the
+    // grid date it belongs to; paging keeps the same one.
+    var open = function (href, cell) {
+      var mine = ++seq;
+      fetch(href, { headers: { Accept: 'text/html' } })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function (html) {
+          if (mine !== seq) return; // a later click won
+          var doc = new DOMParser().parseFromString(html, 'text/html');
+          var panel = doc.getElementById('day-panel');
+          if (!panel) throw new Error('no panel');
+          var title = (doc.querySelector('h2.mtitle') || {}).textContent || '';
+          if (month === null) month = col.innerHTML;
+          var old = grid.querySelector('a.picked');
+          if (old) old.classList.remove('picked');
+          cell.classList.add('picked');
+          from = cell;
+          col.innerHTML = '<p class="kicker">This day · everything on it</p>' +
+            '<div class="dayhead"><h3 tabindex="-1"></h3><div class="acts">' +
+            '<a data-full>Open full day ↗</a>' +
+            '<button type="button" class="ghost" data-close>Close · back to the month</button></div></div>';
+          col.querySelector('h3').textContent = title;
+          col.querySelector('[data-full]').setAttribute('href', href);
+          col.appendChild(panel);
+          col.querySelector('[data-close]').addEventListener('click', close);
+          var h = col.querySelector('h3');
+          var top = col.getBoundingClientRect().top;
+          if (top < 0 || top > innerHeight - 80) col.scrollIntoView({ block: 'start' });
+          h.focus({ preventScroll: true });
+        })
+        .catch(function () { location.href = href; });
+    };
+    grid.addEventListener('click', function (e) {
+      var a = e.target.closest('.cellwrap > a');
+      if (!a || !plain(e)) return;
+      e.preventDefault();
+      open(a.href, a);
+    });
+    // The facts pager inside the panel: Newer / Older page in place too. Still
+    // real links to /day, so a modified click opens that page in full.
+    col.addEventListener('click', function (e) {
+      var a = e.target.closest('#day-panel .pager a[href]');
+      if (!a || month === null || !from || !plain(e)) return;
+      e.preventDefault();
+      open(a.href, from);
+    });
+  })();
+
   // Generating takes seconds. Mark the form busy so the button says so, and
   // stop a second press from starting a second paid call. Disabling happens a
   // tick later so the submission itself is already under way.
@@ -922,12 +1132,13 @@ const CLASS_ATTR: Record<string, string> = { fact: "fact", scheduled: "sched", p
 /**
  * The colour a headline is printed in: green for Sectors' `Bullish` tag, red
  * for `Bearish`, the page's own text colour for everything else. Colour alone
- * is never the message -- the tags themselves are listed next to it, so the
- * same information survives without it.
+ * is never the message: `tone` puts a ▲ or ▼ in front of it (and "Bullish" /
+ * "Bearish" for a screen reader), because the board card, the movers and the
+ * calendar hover card print a headline with no tag list beside it.
  */
 export function sentClass(item: Item): string {
   const s = sentimentOf(item);
-  return s === "positive" ? "pos" : s === "negative" ? "neg" : "";
+  return s === "positive" ? "pos tone" : s === "negative" ? "neg tone" : "";
 }
 
 /** The row's tags, as text. This is the categorisation the page is built on,
@@ -1429,7 +1640,52 @@ function headMove(s: SectorBox): string {
  * rectangles. The watchlist still has the last word on where you go next --
  * every tile is a link to that company's page, which is scoped.
  */
-export function renderBoard(b: Board | null): string {
+/** The board's own filter: one sector, or all of them. It sits inside the
+ * board, because the page's filters below do not reach it. Links, not a form:
+ * each is a URL you can send, and it carries everything else the page holds. */
+function sectorPicker(b: Board, keep: Record<string, string | undefined>): string {
+  const href = (s: string) => {
+    const qs = Object.entries({ ...keep, sector: s || undefined })
+      .filter(([, v]) => v)
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+      .join("&");
+    return `/${qs ? `?${qs}` : ""}#board`;
+  };
+  const chip = (s: string, label: string, change: number | null) => {
+    const move = change == null ? "" : ` <span class="${posneg(change)}">${esc(pct(change))}</span>`;
+    return s === b.sector
+      ? `<span class="mv-tab on" aria-current="true">${esc(label)}${move}</span>`
+      : `<a class="mv-tab" href="${esc(href(s))}">${esc(label)}${move}</a>`;
+  };
+  return `<div class="mv-tabs secpick" role="group" aria-label="Sector">${chip("", "All sectors", null)}${b.choices
+    .map((c) => chip(c.sector, c.sector, c.change))
+    .join("")}</div>`;
+}
+
+/** The indices' day, week, month and year, one line each, over the board. */
+function indexStrip(xs: IndexReturn[]): string {
+  if (!xs.length) return "";
+  const cell = (k: string, v: number | null) =>
+    `<span class="k">${k}</span> ${
+      v == null
+        ? `<span class="faint" title="No close on record near that date">—</span>`
+        : `<b class="${posneg(v)}">${esc(pct(v))}</b>`
+    }`;
+  return `<div class="idxs">${xs
+    .map(
+      (x) => `<div class="idx"><span class="nm">${esc(x.symbol)}</span>
+        <span class="px">${esc(x.close.toLocaleString("en-US", { maximumFractionDigits: 2 }))}</span>
+        ${cell("1D", x.d)}${cell("1W", x.w)}${cell("1M", x.m)}${cell("1Y", x.y)}
+        <span class="faint">close ${esc(fmtShort(x.date))}</span></div>`
+    )
+    .join("")}</div>`;
+}
+
+export function renderBoard(
+  b: Board | null,
+  keep: Record<string, string | undefined> = {},
+  indices: IndexReturn[] = []
+): string {
   if (!b) {
     return `<p class="kicker">The board</p>
       <div class="empty">No board on record yet. It is one API call — run the backfill, or
@@ -1458,12 +1714,16 @@ export function renderBoard(b: Board | null): string {
         .join("")}`
     : "";
 
-  return `<div class="boardhd">
-      <p class="kicker">The board · ${esc(b.drawn)} largest IDX names as of ${esc(
-        fmtShort(b.date)
-      )}</p>
+  return `<div class="boardhd" id="board">
+      <p class="kicker">The board · ${
+        b.sector
+          ? `${esc(b.sector)} · ${esc(b.drawn)} names by industry`
+          : `${esc(b.drawn)} largest IDX names`
+      } as of ${esc(fmtShort(b.date))}</p>
       <button class="ghost fsbtn" type="button" data-fs="board-wrap" hidden>Fullscreen</button>
     </div>
+    ${indexStrip(indices)}
+    ${sectorPicker(b, keep)}
     <div class="bstats">${tone}${topics}</div>
     <div class="board-wrap" id="board-wrap"><div class="board-scroll"><div class="board">
       ${b.sectors
@@ -1833,6 +2093,288 @@ export function gcalUrl(c: Cell, mock: boolean): string {
   return `https://calendar.google.com/calendar/render?${q}`;
 }
 
+// ---------------------------------------------------------------- the movers
+
+/** A close, in whole rupiah with thousands separated. IDX prices run from 65
+ * to 16,450, so this is a plain integer and never a T/B abbreviation. */
+function rupiah(n: number | null | undefined): string {
+  if (n == null || !Number.isFinite(n)) return "—";
+  return `Rp${Math.round(n).toLocaleString("en-US")}`;
+}
+
+/**
+ * One mover, its move, and what was on the record while it moved.
+ *
+ * The headlines are shown INLINE rather than on hover, which is the one place
+ * this deliberately parts company with the board. On the treemap a panel is
+ * the only option: the smallest tiles are two percent wide and there is
+ * nowhere to print a headline. A list has the room, and hiding text behind a
+ * hover in a list is an interaction that costs a reader something for nothing.
+ */
+function moverRow(m: Mover, newsFrom: string, newsTo: string, w: string, recordFrom: string | null = null): string {
+  const notes = m.notes.length
+    ? `<ul class="mv-notes">${m.notes
+        .map((n) => {
+          // One line per note: the headline, linked to its source when the
+          // source is a web page, then when and where. The kind is named only
+          // when it is not news -- a filing among headlines is the one worth
+          // flagging. domainOf() doubles as the gate: no http(s), no link.
+          const host = domainOf(n.sourceUrl);
+          const title = host
+            ? `<a class="t ${sentClass(n)}" href="${esc(n.sourceUrl)}" target="_blank" rel="noopener noreferrer"
+                 title="${esc(n.title)}">${esc(n.title)}</a>`
+            : `<span class="t ${sentClass(n)}" title="${esc(n.title)}">${esc(n.title)}</span>`;
+          return `<li>${title}<span class="k">${n.kind === "news" ? "" : `${esc(kindLabel(n.kind))} · `}${esc(
+            fmtShort(n.date!)
+          )}${host ? ` · ${esc(host)}` : ""}</span></li>`;
+        })
+        .join("")}</ul>`
+    : recordFrom && recordFrom > newsTo
+      ? `<p class="mv-none">No news record for ${esc(m.symbol)} between ${esc(fmtShort(newsFrom))} and ${esc(
+          fmtShort(newsTo)
+        )} — our headlines start ${esc(fmtShort(recordFrom))}, so this is unknown, not quiet.</p>`
+      : `<p class="mv-none">Nothing on the record for ${esc(m.symbol)} between ${esc(
+          fmtShort(recordFrom ?? newsFrom)
+        )} and ${esc(fmtShort(newsTo))}${
+          recordFrom ? ` — our headlines start ${esc(fmtShort(recordFrom))}; earlier days are unknown` : ""
+        }.</p>`;
+
+  return `<li class="mv">
+    <div class="mv-hd">
+      <span class="rk">${esc(m.rank)}</span>
+      <a class="tick" href="/ticker?symbol=${esc(m.symbol)}${w}">${esc(m.symbol)}</a>
+      <span class="mv-px mono">${esc(rupiah(m.lastClose))}</span>
+      <span class="mv-ch mono ${posneg(m.change)}">${m.change == null ? "—" : esc(pct(m.change))}</span>
+    </div>
+    <p class="mv-nm">${esc(m.name)}</p>
+    ${notes}
+  </li>`;
+}
+
+/**
+ * The biggest gainers and losers over one period, side by side.
+ *
+ * Every period the switcher offers came back in the SAME call, so changing it
+ * is a database read and never a purchase. That is why there are five of them:
+ * "was this a one-day spike or a year-long climb?" is the question a single
+ * period cannot answer, and under a per-period price it would have gone
+ * unasked to save four credits.
+ */
+export function renderMovers(
+  m: Movers | null,
+  watchlist: string[],
+  keep: Record<string, string | undefined> = {}
+): string {
+  if (!m) {
+    return `<p class="kicker">Biggest movers</p>
+      <div class="empty">No movers on record yet. They are one API call — run the backfill,
+      or start the server with a key set, and the next visit lists them.</div>`;
+  }
+  const w = watchlist.length ? `&w=${encodeURIComponent(watchlist.join(","))}` : "";
+
+  // The switcher anchors itself: you should land looking at the list you just
+  // changed, not at the top of a page four blocks above it.
+  const link = (p: MoverPeriod) =>
+    `/?${Object.entries({ ...keep, movers: p })
+      .filter(([, v]) => v)
+      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+      .join("&")}#movers`;
+
+  const tabs = MOVER_PERIODS.map((p) =>
+    p === m.period
+      ? `<span class="mv-tab on" aria-current="true">${esc(MOVER_LABEL[p])}</span>`
+      : `<a class="mv-tab" href="${esc(link(p))}">${esc(MOVER_LABEL[p])}</a>`
+  ).join("");
+
+  const side = (label: string, rows: Mover[], cls: string) =>
+    `<div class="mv-side ${cls}">
+      <h4>${esc(label)}</h4>
+      ${
+        rows.length
+          ? `<ol class="mv-list">${rows.map((r) => moverRow(r, m.newsFrom, m.newsTo, w, m.recordFrom)).join("")}</ol>`
+          : `<div class="empty">Nothing on record for this period.</div>`
+      }
+    </div>`;
+
+  const total = m.gainers.length + m.losers.length;
+  return `<div class="boardhd" id="movers">
+      <p class="kicker">Biggest movers · ${esc(MOVER_LABEL[m.period])} to ${esc(
+        fmtShort(m.newsTo)
+      )}</p>
+    </div>
+    <div class="mv-tabs" role="group" aria-label="Period">${tabs}</div>
+    <div class="bstats"><span class="n">${esc(m.withNotes)}</span> of ${esc(
+      total
+    )} have something on the record<span class="sep">·</span>headlines from ${esc(
+      fmtShort(m.newsFrom)
+    )}–${esc(fmtShort(m.newsTo))}${
+      m.recordFrom
+        ? `<span class="sep">·</span><span class="on-note">our news record starts ${esc(fmtShort(m.recordFrom))} — earlier days are unknown, not quiet</span>`
+        : m.clamped
+          ? `<span class="sep">·</span><span class="faint">the news record does not reach a full year back</span>`
+          : ""
+    }</div>
+    <div class="mv-cols">
+      ${side("Gainers", m.gainers, "up")}
+      ${side("Losers", m.losers, "dn")}
+    </div>
+    <details class="why">
+      <summary>What this is, and what it is not</summary>
+      <p>Sectors' own top-gainers and top-losers list, five a side, ranked by the move over
+      the period — its ranking, printed, not a second one computed here. The close and the
+      date beside each name are the API's: <b>the session the move ends on</b>, which for a
+      thinly traded name can trail the day we asked.</p>
+      <p><b>The headlines under a name are what was on the record while it moved, not the
+      reason it moved.</b> That disclaimer matters more here than anywhere else on this
+      page: a headline printed under the word "gainer" will be read as the cause of the
+      gain unless it is refused out loud. ${esc(m.withNotes)} of these ${esc(
+        total
+      )} names have anything at all — these are often small companies that no outlet covered
+      — and the rest say so rather than reaching further back for something to print.</p>
+      ${
+        m.clamped
+          ? `<p>A year is longer than this product's news record, so the year view reads
+             headlines from ${esc(fmtShort(m.newsFrom))} onwards rather than from a year
+             ago. The move is still the full year's; the coverage is not.</p>`
+          : ""
+      }
+    </details>`;
+}
+
+/** Rows the table shows before it points at the ticker pages for the rest. */
+const UP_NEXT_ROWS = 10;
+
+/**
+ * The selected names' next 90 days, as four counts and one sorted table.
+ *
+ * Dated and predicted are counted apart in every tile: "4 events" that mixes
+ * a published date with a fitted window is a number nobody can act on. The
+ * names with nothing ahead are listed by name, because an empty calendar
+ * for a holding is a finding, not a gap in the page.
+ */
+export function upNext(items: Item[], watchlist: string[], today: string): string {
+  const within = (n: number) => items.filter((i) => daysBetween(today, i.date!) < n);
+  const split = (xs: Item[]) => {
+    const p = xs.filter((i) => i.cls === "predicted").length;
+    return `${xs.length - p} dated${p ? ` · ${p} predicted` : ""}`;
+  };
+  const ahead = (d: number) => (d <= 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`);
+  const when = (i: Item) =>
+    i.cls === "predicted" && i.window ? fmtRange(i.window.from, i.window.to) : fmtWithDay(i.date!);
+
+  const first = items[0];
+  const week = within(7);
+  const month = within(30);
+  const divs = items.filter((i) => i.kind === "exdiv");
+  const biggest = divs
+    .filter((i) => i.drop)
+    .sort((a, b) => a.drop!.pct - b.drop!.pct)[0];
+  const quiet = watchlist.filter((s) => !items.some((i) => i.symbol === s));
+
+  const tile = (k: string, v: string, s: string, lead = false) =>
+    `<div class="kpi${lead ? " lead" : ""}"><div class="k">${esc(k)}</div><div class="v">${v}</div>
+     <div class="s">${esc(s)}</div></div>`;
+  const kpis = `<div class="kpis">
+    ${
+      first
+        ? tile(
+            "Next up",
+            `${esc(first.symbol)} <small>${esc(kindLabel(first.kind).toLowerCase())}</small>`,
+            `${first.cls === "predicted" ? "window opens " : ""}${ahead(daysBetween(today, first.date!))} · ${when(first)}`,
+            true
+          )
+        : tile("Next up", "—", "nothing dated or predicted", true)
+    }
+    ${tile("Next 7 days", String(week.length), split(week))}
+    ${tile("Next 30 days", String(month.length), split(month))}
+    ${tile(
+      "Ex-dividend",
+      String(divs.length),
+      biggest ? `largest drop ${fmtPct(biggest.drop!.pct)} · ${biggest.symbol}` : divs.length ? split(divs) : "none in 90 days"
+    )}
+  </div>`;
+
+  const row = (i: Item) => {
+    const d = Math.max(0, daysBetween(today, i.date!));
+    const pred = i.cls === "predicted";
+    const cert = pred
+      ? `<span class="cert"><i class="sw p"></i>Predicted${i.fit ? ` · ${esc(hitRateLabel(i.fit))}` : ""}</span>`
+      : `<span class="cert"><i class="sw s"></i>Dated by issuer</span>`;
+    const impact = i.drop
+      ? `<span class="drop">${esc(fmtPct(i.drop.pct))}</span>`
+      : `<span class="faint">—</span>`;
+    return `<tr class="${pred ? "pred" : "sched"}">
+      <td class="when">${esc(when(i))}</td>
+      <td class="r${d < 7 ? " soon" : ""}">${pred && i.window && i.window.from <= today ? "open" : `${d}d`}</td>
+      <td>${tickerCell(i, watchlist)}</td>
+      <td title="${esc(i.title)}">${esc(kindLabel(i.kind))}</td>
+      <td>${cert}</td>
+      <td class="r" title="Ex-dividend only: dividend ÷ last close">${impact}</td>
+    </tr>`;
+  };
+  const shown = items.slice(0, UP_NEXT_ROWS);
+  const table = items.length
+    ? `<div class="nx-scroll"><table class="nx">
+      <thead><tr><th>When</th><th class="r">In</th><th>Ticker</th><th>Event</th>
+        <th>Certainty</th><th class="r">Exp. drop</th></tr></thead>
+      <tbody>${shown.map(row).join("")}${
+        items.length > shown.length
+          ? `<tr class="more"><td colspan="6">+${items.length - shown.length} more in the 90 days — each ticker page carries its full list</td></tr>`
+          : ""
+      }</tbody></table></div>`
+    : `<div class="empty">Nothing dated or predicted for ${watchlist.length ? "these companies" : "the market"} in the next 90 days.</div>`;
+
+  const csv = `/upnext.csv${watchlist.length ? `?w=${encodeURIComponent(watchlist.join(","))}` : ""}`;
+  return `<div class="nx-head"><p class="kicker">Up next · ${
+    watchlist.length ? `your ${watchlist.length} compan${watchlist.length === 1 ? "y" : "ies"}` : "every company on record"
+  } · ${esc(fmtShort(today))}–${esc(fmtShort(shift(today, 90)))}</p>
+    ${items.length ? `<a class="nx-csv" href="${esc(csv)}" download>Download CSV</a>` : ""}</div>
+    ${kpis}
+    ${table}
+    ${
+      quiet.length
+        ? `<p class="note">Nothing on the calendar for <b>${quiet.map(esc).join(", ")}</b> — no date published and no rhythm we could fit.</p>`
+        : ""
+    }${watchlist.length ? "" : `<p class="note">Pick companies above to add predicted windows for them.</p>`}`;
+}
+
+/**
+ * The same rows as a CSV, for the spreadsheet an analyst keeps anyway.
+ *
+ * Titles come from the API, so a cell that opens with = + - @ (or a tab or
+ * carriage return) is prefixed with an apostrophe: Excel and Sheets would
+ * otherwise run it as a formula.
+ */
+export function upNextCsv(items: Item[], today: string): string {
+  const cell = (v: unknown) => {
+    let t = v == null ? "" : String(v);
+    // Text only: a negative drop is a number, and quoting it would stop a
+    // spreadsheet summing the column.
+    if (typeof v === "string" && /^[=+\-@\t\r]/.test(t)) t = `'${t}`;
+    return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+  const head = ["date", "window_from", "window_to", "days_to_go", "ticker", "event", "title",
+    "certainty", "hit_rate", "expected_drop_pct", "last_close", "source_url"];
+  const rows = items.map((i) => {
+    const pred = i.cls === "predicted";
+    return [
+      pred ? "" : i.date,
+      pred ? i.window?.from : "",
+      pred ? i.window?.to : "",
+      Math.max(0, daysBetween(today, i.date!)),
+      i.symbol,
+      kindLabel(i.kind),
+      i.title,
+      pred ? "predicted" : "dated by issuer",
+      pred && i.fit && i.fit.trials >= 2 ? `${i.fit.hits}/${i.fit.trials}` : "",
+      i.drop ? Number((i.drop.pct * 100).toFixed(2)) : "",
+      i.drop ? i.drop.close : "",
+      i.sourceUrl ?? "",
+    ].map(cell).join(",");
+  });
+  return [head.join(","), ...rows].join("\r\n") + "\r\n";
+}
+
 export function renderMonth(
   cells: Cell[],
   ym: string,
@@ -1852,6 +2394,17 @@ export function renderMonth(
      * board has been fetched, which is a state the page renders rather than a
      * reason not to serve it. */
     board?: Board | null;
+    /** The ranked movers for the period the URL asked for. Same story: null
+     * renders as a sentence, not a 500. */
+    movers?: Movers | null;
+    /** What this page's URL is carrying, so the period switcher does not drop
+     * the month, the company selection or the topic filter. */
+    keep?: Record<string, string | undefined>;
+    /** The selected names' next 90 days. Absent renders nothing: the tests
+     * that build a bare month have no database to ask. */
+    upcoming?: Item[];
+    /** Each index's 1D / 1W / 1M / 1Y, for the strip over the board. */
+    indexReturns?: IndexReturn[];
   }
 ): string {
   const w = watchlist.length ? `&w=${encodeURIComponent(watchlist.join(","))}` : "";
@@ -1975,6 +2528,7 @@ export function renderMonth(
       tag: opts.pulse.tag || undefined,
       who: opts.pulse.who || undefined,
       price: opts.priceSymbol ?? undefined,
+      sector: opts.board?.sector || undefined,
     },
     filters: tagBar({
       action: "/",
@@ -1985,21 +2539,33 @@ export function renderMonth(
         w: watchlist.join(",") || undefined,
         price: opts.priceSymbol ?? undefined,
         who: opts.pulse.who || undefined,
+        // The movers period survives a topic change: the two narrow different
+        // things, and resetting one from the other is a filter with a side
+        // effect.
+        movers: opts.movers?.period,
+        sector: opts.board?.sector || undefined,
       },
       count: opts.pulse.tag
         ? `${opts.pulse.total} headline${opts.pulse.total === 1 ? "" : "s"} tagged ${tagPhrase(opts.pulse.tag)}`
         : `All ${opts.pulse.topics.length} tag${opts.pulse.topics.length === 1 ? "" : "s"} on record shown`,
     }),
     wide: true,
-    // The board is what just happened, so it leads; the calendar and the
-    // headlines beside it are what is coming and what has been said.
+    // The board is what just happened across the whole market, so it opens the
+    // page, above the filters: it takes neither the companies nor the topic,
+    // and a block drawn under a filter it ignores looks broken.
+    lead: renderBoard(opts.board ?? null, { ...(opts.keep ?? {}), movers: opts.movers?.period }, opts.indexReturns ?? []),
+    // Under the filters, what is coming for the selected names leads, across
+    // both tracks: it is the question the product exists to answer. The
+    // calendar and the headlines beside it are what is coming and what has
+    // been said.
     //
-    // Reading order is board, attention, month, headlines, and that is the
+    // Reading order is board, then up next, movers, attention, month, headlines, and that is the
     // DOM order too -- the two-track layout is grid-area placement on top of
     // it, so narrow screens, a screen reader and tab order all still get the
     // single column in the order the page was written.
     body: `<div class="dash">
-    <section class="dash-board">${renderBoard(opts.board ?? null)}</section>
+    ${opts.upcoming ? `<section class="dash-next">${upNext(opts.upcoming, watchlist, todayIso())}</section>` : ""}
+    <section class="dash-movers">${renderMovers(opts.movers ?? null, watchlist, opts.keep ?? {})}</section>
     <section class="dash-attention">${attentionSection(opts.attention, watchlist)}</section>
     <section class="dash-month">
     <h2 class="mtitle">${esc(monthLabel(ym))}</h2>
@@ -2067,6 +2633,7 @@ export function renderDay(
           ? `<p class="note">Showing ${watchlist.length === 1 ? `<b>${esc(watchlist[0])}</b>` : `${watchlist.length} selected companies`} only.</p>`
           : ""
       }
+      <div id="day-panel">
       ${section("Scheduled", d.scheduled, "Nothing the issuers have dated for this day.")}
       ${(() => {
         const body = section(
@@ -2081,6 +2648,7 @@ export function renderDay(
           `Facts · ${facts.total}`
         );
       })()}
+      </div>
       ${legend()}`,
   });
 }

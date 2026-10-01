@@ -464,6 +464,32 @@ export function pulseOver(
   };
 }
 
+// ---------------------------------------------------------------- up next
+
+/**
+ * Everything ahead for the selected names across the horizon, dated first
+ * on a tie: the list the agenda page opens with.
+ *
+ * Predicted windows only for a named selection. With no companies picked the
+ * list is the market's dated events alone -- fitting a rhythm for every
+ * issuer on record to fill a list nobody asked to be about them is work for
+ * no reader.
+ */
+export function upcoming(con: Database, symbols: string[], today: string): Item[] {
+  const to = shift(today, HORIZON_DAYS);
+  const dated = attachDrops(
+    con,
+    eventsInRange(con, today, to, symbols).filter((r) => r.class === "scheduled").map(toItem),
+    today
+  );
+  const pred = symbols.flatMap((s) => predictionsFor(con, s, today, to).items);
+  return [...dated, ...pred].sort(
+    (a, b) =>
+      (a.date ?? "").localeCompare(b.date ?? "") ||
+      Number(a.cls === "predicted") - Number(b.cls === "predicted")
+  );
+}
+
 // ---------------------------------------------------------------- one date
 
 export interface Day {

@@ -95,3 +95,98 @@ test("a second identical run asks for one day, not the whole window", () => {
   assert.deepEqual(second, [[to, to]]);
   con.close();
 });
+
+test("an index is priced from the index endpoint, a company from the daily one", async () => {
+  const { fillPrices } = await import("./backfill.js");
+  const { connect } = await import("./db.js");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const con = connect(path.join(mkdtempSync(path.join(tmpdir(), "fw-")), "t.db"));
+  const seen: string[] = [];
+  const client = {
+    tryGet: async (p: string) => {
+      seen.push(p);
+      return p.startsWith("/v2/index-daily/")
+        ? { body: [{ index_code: "IHSG", date: "2026-09-29", price: 7123.4 }], error: null }
+        : { body: { results: [{ date: "2026-09-29", close: 9000, volume: 1 }] }, error: null };
+    },
+  } as any;
+  assert.equal(await fillPrices(con, client, "IHSG", "2026-09-01", "2026-09-29"), 1);
+  assert.equal(await fillPrices(con, client, "BBCA", "2026-09-01", "2026-09-29"), 1);
+  assert.deepEqual(seen, ["/v2/index-daily/ihsg/", "/v2/daily/BBCA/"]);
+  const close = con.prepare("SELECT close FROM price WHERE symbol='IHSG'").get() as any;
+  assert.equal(close.close, 7123.4, "and the index's `price` is stored as its close");
+});
+
+test("a year of an index is bought once, in 90-day calls, and never again", async () => {
+  const { fillIndexYear, lastSession } = await import("./backfill.js");
+  const { connect } = await import("./db.js");
+  const { mkdtempSync } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const con = connect(path.join(mkdtempSync(path.join(tmpdir(), "fw-")), "t.db"));
+  const calls: any[] = [];
+  const client = {
+    tryGet: async (p: string, q: any) => {
+      calls.push([p, q.start, q.end]);
+      return { body: [{ date: q.start, price: 7000 }, { date: q.end, price: 7100 }], error: null };
+    },
+  } as any;
+  await fillIndexYear(con, client, "IHSG", "2026-09-30");
+  assert.equal(calls.length, 4, "four calls of at most 90 days cover the year");
+  assert.ok(calls.every(([p]) => p === "/v2/index-daily/ihsg/"));
+  assert.ok(calls.every(([, s, e]) => (Date.parse(e) - Date.parse(s)) / 864e5 <= 90));
+  await fillIndexYear(con, client, "IHSG", "2026-09-30");
+  assert.equal(calls.length, 4, "the second run buys nothing");
+  // The session a run should hold: Friday on a Monday, the day before otherwise.
+  assert.equal(lastSession("2026-09-28"), "2026-09-25");
+  assert.equal(lastSession("2026-09-30"), "2026-09-29");
+});
+
+test("a sweep cut short by the page cap claims every day it walked past, and only those", async () => {
+  const { pagedRange } = await import("./backfill.js");
+  const { PAGE_LIMIT } = await import("./config.js");
+  const { shift } = await import("./dates.js");
+  // Twelve stories a day, 16-30 Sep, served newest-first the way the real
+  // feeds page (measured on every cached news, filings and suspensions page).
+  const all: { timestamp: string }[] = [];
+  for (let d = "2026-09-30"; d >= "2026-09-16"; d = shift(d, -1))
+    for (let i = 0; i < 12; i++) all.push({ timestamp: `${d}T0${i % 10}:00:00` });
+  const client = (order: "desc" | "asc") => ({
+    tryGet: async (_p: string, q: any) => {
+      const inRange = all.filter((r) => r.timestamp.slice(0, 10) >= q.start && r.timestamp.slice(0, 10) <= q.end);
+      if (order === "asc") inRange.reverse();
+      const page = inRange.slice(q.offset, q.offset + q.limit);
+      return { body: { results: page, pagination: { has_next: q.offset + q.limit < inRange.length } }, error: null };
+    },
+  }) as any;
+
+  // Four pages: one for the whole range, three for the 16-30 slice.
+  const r = await pagedRange(client("desc"), "/v2/news/", "2026-07-02", "2026-09-30", 4);
+  assert.equal(r.truncated, true);
+  const walked = r.rows.slice(PAGE_LIMIT); // the slice's own rows
+  const oldest = walked.at(-1).timestamp.slice(0, 10);
+  assert.equal(r.coveredFrom, shift(oldest, 1), "everything after the oldest day reached is whole");
+  assert.ok(r.coveredFrom < "2026-09-30", "which is more than the newest day alone -- the bug");
+  assert.ok(r.coveredFrom > oldest, "and the day it stopped inside is not claimed");
+
+  // Pages in an order we have not measured: claim nothing rather than guess.
+  const unknown = await pagedRange(client("asc"), "/v2/news/", "2026-07-02", "2026-09-30", 4);
+  assert.ok(unknown.coveredFrom > "2026-09-30", "nothing in the range is marked complete");
+
+  // One day denser than the whole budget: not even that day is complete, and
+  // the caller is told so (coveredFrom after `to`) rather than handed a guess.
+  const dense = {
+    tryGet: async (_p: string, q: any) => ({
+      body: {
+        results: Array.from({ length: q.limit }, () => ({ timestamp: "2026-09-30T09:00:00" })),
+        pagination: { has_next: true },
+      },
+      error: null,
+    }),
+  } as any;
+  const one = await pagedRange(dense, "/v2/news/", "2026-09-30", "2026-09-30", 1);
+  assert.equal(one.truncated, true);
+  assert.ok(one.coveredFrom > "2026-09-30", "a day the budget ran out inside is not marked");
+});

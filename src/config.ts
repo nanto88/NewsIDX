@@ -242,6 +242,72 @@ export const BOARD_HEAD_PX = 17;
  */
 export const BOARD_MIN_H_PX = 400;
 
+// ---------------------------------------------------------------- the movers
+/**
+ * The periods the movers list offers, and the order the switcher shows them.
+ *
+ * All five arrive in ONE call -- `periods` is a comma-separated list, measured
+ * -- so a day, a week, a fortnight, a month and a year cost the same single
+ * credit that a day alone would. Which is the only reason the list is five
+ * long: under a per-period price this would have been one period, and the
+ * question "was this a one-day spike or a year-long climb?" would have gone
+ * unanswered to save four credits.
+ */
+export const MOVER_PERIODS = ["1d", "7d", "14d", "30d", "365d"] as const;
+export type MoverPeriod = (typeof MOVER_PERIODS)[number];
+
+/** How many names a side. The API caps `n_stock` at 10 (measured: asking for
+ * 20 returns 10); five is what fits beside the board without the section
+ * becoming the page. */
+export const MOVER_COUNT = 5;
+
+/** How a period is written on the switcher. "365d" is a year to a reader and
+ * a parameter to the API; only one of those belongs on a button. */
+export const MOVER_LABEL: Record<MoverPeriod, string> = {
+  "1d": "1 day",
+  "7d": "1 week",
+  "14d": "2 weeks",
+  "30d": "1 month",
+  "365d": "1 year",
+};
+
+/**
+ * How far back a mover's headlines are read, per period.
+ *
+ * A 30-day gainer's story is not in the last three days, and showing only the
+ * last three would print "nothing on the record" against a stock that rose a
+ * quarter on news three weeks ago. So the window IS the period -- what moved
+ * it is somewhere inside the span that measured the move, or it is not on our
+ * record at all.
+ *
+ * `1d` gets three days rather than one because IDX does not trade at weekends:
+ * a Monday move carries Friday's and the weekend's news, and a one-day window
+ * would hide it.
+ */
+export const MOVER_NEWS_DAYS: Record<MoverPeriod, number> = {
+  "1d": 3,
+  "7d": 7,
+  "14d": 14,
+  "30d": 30,
+  // NOT 365. The news backfill holds BACKFILL_DAYS of record, so a year-long
+  // window would promise a year of headlines and deliver ninety days of them.
+  // Clamped to what we actually have, and the page says which span it read --
+  // a year's move against three months of coverage is a gap worth printing,
+  // not one worth hiding behind a wider-looking number.
+  "365d": BACKFILL_DAYS,
+};
+
+/** Headlines shown per mover. Three, the same as a board tile's hover panel:
+ * it is the same question asked of the same rows, and two different answers to
+ * "what was on the record" would be one too many. */
+export const MOVER_NOTES = 3;
+
+/** `?movers=` is a period name or it is nothing. */
+export function parseMoverPeriod(raw: unknown): MoverPeriod {
+  const v = String(raw ?? "").trim().toLowerCase();
+  return (MOVER_PERIODS as readonly string[]).includes(v) ? (v as MoverPeriod) : "1d";
+}
+
 // ---------------------------------------------------------------- attention
 /**
  * Two headlines are the same story when their titles overlap this much, by

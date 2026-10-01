@@ -381,6 +381,18 @@ function dailyRows(symbol: string, start: string, end: string): Row[] {
   const base = BASE_CLOSE[symbol];
   if (!base) return [];
   const out: Row[] = [];
+  // Older than 120 days: a walk of its own, so the index strip's 1Y has a
+  // year to measure while the 120 days every other test pins stay as they were.
+  let old = Math.round(base * 0.92);
+  for (let i = 400; i > 120; i--) {
+    const date = shift(TODAY, -i);
+    if (isWeekend(date)) continue;
+    const seed = (symbol.charCodeAt(0) + Number(date.slice(8)) * 5 + Number(date.slice(5, 7))) % 13;
+    old = Math.round(old * (1 + (seed - 6) / (symbol === "IHSG" || symbol === "LQ45" ? 2400 : 400)));
+    if (date >= start && date <= end) {
+      out.push({ symbol: `${symbol}.JK`, date, close: old, volume: 1e8 + seed * 1e7, market_cap: old * 1e11 });
+    }
+  }
   let close = base;
   for (let i = 120; i >= 0; i--) {
     const date = shift(TODAY, -i);
@@ -485,6 +497,47 @@ const BOARD: [string, string, string, string, number, number][] = [
   ["ASSA", "PT Adi Sarana Armada Tbk", "Transportation & Logistic", "Logistics & Deliveries", 9, 0.036],
 ];
 
+// ---------------------------------------------------------------- the movers
+// Five gainers and five losers over each of five periods, in the shape ONE
+// /v2/companies/top-changes/ call returns: {classification: {period: rows}}.
+//
+// The cast is drawn from BOARD above plus a few names that are NOT on it --
+// SOHO, MDIA, SHIP, CARE -- because that is the honest shape of this list: the
+// biggest movers on IDX are frequently small companies far outside the 200
+// largest, which is exactly why so few of them have a headline on record. A
+// fixture where every mover is a blue chip with three stories would demo a
+// product that does not exist.
+const MOVER_CAST: [string, string, number][] = [
+  ["SOHO", "PT Soho Global Health Tbk", 1505],
+  ["MDIA", "PT Intermedia Capital Tbk", 250],
+  ["SHIP", "PT Sillo Maritime Perdana Tbk", 2690],
+  ["ICBP", "PT Indofood CBP Sukses Makmur Tbk", 11200],
+  ["ANTM", "PT Aneka Tambang Tbk", 3140],
+  ["CARE", "PT Metro Healthcare Indonesia Tbk", 336],
+  ["MDKA", "PT Merdeka Copper Gold Tbk", 1820],
+  ["BREN", "PT Barito Renewables Energy Tbk", 5975],
+  ["TLKM", "PT Telkom Indonesia (Persero) Tbk", 2710],
+  ["BELI", "PT Global Digital Niaga Tbk", 352],
+];
+
+/** Deterministic, period-dependent, and never zero: a fixture that returned
+ * the same ladder for every period would make the switcher look broken. */
+function movers(period: string, gaining: boolean): Row[] {
+  const span = Number(period.replace("d", ""));
+  const base = Math.log10(span + 1) * 0.11; // a month moves further than a day
+  return MOVER_CAST.slice(gaining ? 0 : 5).slice(0, 5).map((c, i) => {
+    const [symbol, name, close] = c;
+    const mag = base + (5 - i) * 0.018 + (span % 7) * 0.004;
+    return {
+      name,
+      symbol: `${symbol}.JK`,
+      price_change: Number(((gaining ? 1 : -1) * mag).toFixed(12)),
+      last_close_price: close,
+      latest_close_date: TODAY,
+    };
+  });
+}
+
 export function mockRoute(path: string, params?: Record<string, any>): any {
   const p = params ?? {};
 
@@ -501,6 +554,16 @@ export function mockRoute(path: string, params?: Record<string, any>): any {
     const since = p.since ? String(p.since) : null;
     return page(REPORTED.filter((r) => !since || r.date >= since), p);
   }
+  // Must come BEFORE the bare /v2/companies/ branch below: both match that
+  // prefix, and the more specific path has to win.
+  if (path.startsWith("/v2/companies/top-changes/")) {
+    const periods = String(p.periods ?? "1d").split(",").map((x: string) => x.trim()).filter(Boolean);
+    const n = Number(p.n_stock ?? 5);
+    const byPeriod = (gaining: boolean) =>
+      Object.fromEntries(periods.map((per: string) => [per, movers(per, gaining).slice(0, n)]));
+    return { top_gainers: byPeriod(true), top_losers: byPeriod(false) };
+  }
+
   // Must come AFTER the quarterly-financial-dates branch above: both start
   // with /v2/companies/, and the more specific path has to win.
   if (path.startsWith("/v2/companies/")) {
@@ -530,6 +593,13 @@ export function mockRoute(path: string, params?: Record<string, any>): any {
     const end = String(p.end ?? TODAY);
     const start = String(p.start ?? shift(end, -30));
     return { results: dailyRows(s, start, end) };
+  }
+  if (path.startsWith("/v2/index-daily/")) {
+    // The real shape: a bare array, a lowercase code in the path, `price`.
+    const code = path.split("/").filter(Boolean).at(-1)!.toUpperCase();
+    const end = String(p.end ?? TODAY);
+    const start = String(p.start ?? shift(end, -30));
+    return dailyRows(code, start, end).map((r: any) => ({ index_code: code, date: r.date, price: r.close }));
   }
   if (path.startsWith("/v2/tags/")) {
     // Placeholder: the real IDX vocabulary is probe Q12's answer, committed

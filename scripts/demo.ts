@@ -8,8 +8,8 @@
  */
 import { rmSync } from "node:fs";
 import { Client } from "../src/api.js";
-import { backfillFacts, fillBoard, fillPrices, fillTicker, pollReports } from "../src/backfill.js";
-import { BACKFILL_DAYS, DATA_DIR, defaultWatchlist, indexSymbol, mockMode, runToday } from "../src/config.js";
+import { backfillFacts, fillBoard, fillIndexYear, fillMovers, fillPrices, fillTicker, pollReports } from "../src/backfill.js";
+import { BACKFILL_DAYS, DATA_DIR, defaultWatchlist, indexChoices, mockMode, runToday } from "../src/config.js";
 import { connect, creditsSpent, endRun, startRun } from "../src/db.js";
 import { shift } from "../src/dates.js";
 
@@ -35,10 +35,13 @@ try {
   let perTicker = 0;
   for (const s of watchlist) perTicker += (await fillTicker(con, client, s, today)).events;
   // The index leads: it is the series the default, unfiltered calendar shows.
-  for (const s of [indexSymbol(), ...watchlist].filter(Boolean) as string[])
+  for (const s of [...new Set([...indexChoices().map((c) => c.symbol), ...watchlist])])
     await fillPrices(con, client, s, shift(today, -90), today);
+  for (const c of indexChoices()) await fillIndexYear(con, client, c.symbol, today);
   // The board: one call, and the only market-wide picture in the product.
   const drawn = await fillBoard(con, client, today);
+  // The movers: one call, every period.
+  const moved = await fillMovers(con, client, today);
 
   endRun(con, id, client.spent, client.calls.filter((c) => c.source === "cache").length);
 
@@ -49,6 +52,7 @@ newsidx — fixture run for ${today}
   report facts     ${reports}
   per-ticker       ${perTicker} chips across ${watchlist.length} names
   board            ${drawn} companies, one call
+  movers           ${moved} rows across every period, one call
   credits          ${client.spent} (${client.calls.length} calls, all fixtures)
 
 Now serve it:  npm run demo:serve   ->  http://localhost:3000

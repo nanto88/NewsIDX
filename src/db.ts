@@ -71,6 +71,27 @@ CREATE TABLE IF NOT EXISTS board(
   close_change REAL,
   PRIMARY KEY (date, symbol));
 
+-- The day's biggest movers, five a side, over each of five periods. Every row
+-- of this table arrives in ONE call: /v2/companies/top-changes/ takes a
+-- comma-separated list of periods, so a day, a week, a fortnight, a month and
+-- a year cost the same single credit that a day alone would.
+--
+-- Keyed by rank rather than symbol: the same company can top both the 7d and
+-- the 30d list, and a re-run on the same day must overwrite the ladder rather
+-- than grow it. close_date is the API's own latest_close_date -- the session
+-- the move ends on, which is not always the day we asked.
+CREATE TABLE IF NOT EXISTS mover(
+  date TEXT NOT NULL,
+  period TEXT NOT NULL,          -- 1d | 7d | 14d | 30d | 365d
+  direction TEXT NOT NULL,       -- gainer | loser
+  rank INTEGER NOT NULL,
+  symbol TEXT NOT NULL,
+  name TEXT NOT NULL,
+  price_change REAL,
+  last_close REAL,
+  close_date TEXT,
+  PRIMARY KEY (date, period, direction, rank));
+
 -- The generated FAQ for one company. One row per symbol: it is a cache, and
 -- the fingerprint is what makes it one -- unchanged rows mean the stored
 -- answer still describes the data, so the button costs nothing to press.
@@ -554,14 +575,24 @@ export interface BoardRow {
   close_change: number | null;
 }
 
+/**
+ * A day's board is one snapshot, so a new one REPLACES that day's rows rather
+ * than merging into them: merged, a company that left the top 200 since the
+ * last fetch kept its old tile and its old move. An empty answer (a failed
+ * call) replaces nothing -- a stale board beats a blank one.
+ */
 export function upsertBoard(con: Database.Database, rows: BoardRow[]): number {
+  const clear = con.prepare(`DELETE FROM board WHERE date = ?`);
   const stmt = con.prepare(`
     INSERT INTO board(date,symbol,name,sector,sub_sector,market_cap,close_change)
     VALUES (@date,@symbol,@name,@sector,@sub_sector,@market_cap,@close_change)
     ON CONFLICT(date,symbol) DO UPDATE SET
       name=excluded.name, sector=excluded.sector, sub_sector=excluded.sub_sector,
       market_cap=excluded.market_cap, close_change=excluded.close_change`);
-  con.transaction((rs: BoardRow[]) => rs.forEach((r) => stmt.run(r)))(rows);
+  con.transaction((rs: BoardRow[]) => {
+    for (const d of new Set(rs.map((r) => r.date))) clear.run(d);
+    rs.forEach((r) => stmt.run(r));
+  })(rows);
   return rows.length;
 }
 
@@ -577,6 +608,58 @@ export function boardOn(con: Database.Database, date: string): BoardRow[] {
   return con
     .prepare(`SELECT * FROM board WHERE date = ? ORDER BY market_cap DESC`)
     .all(date) as BoardRow[];
+}
+
+// ---------------------------------------------------------------- the movers
+
+export interface MoverRow {
+  date: string;
+  period: string;
+  direction: string;
+  rank: number;
+  symbol: string;
+  name: string;
+  price_change: number | null;
+  last_close: number | null;
+  close_date: string | null;
+}
+
+/** Same rule as the board: a day's movers are one snapshot. Keyed by rank, a
+ * shorter list would otherwise leave the old day's names at the ranks it no
+ * longer fills. */
+export function upsertMovers(con: Database.Database, rows: MoverRow[]): number {
+  const clear = con.prepare(`DELETE FROM mover WHERE date = ?`);
+  const stmt = con.prepare(`
+    INSERT INTO mover(date,period,direction,rank,symbol,name,price_change,last_close,close_date)
+    VALUES (@date,@period,@direction,@rank,@symbol,@name,@price_change,@last_close,@close_date)
+    ON CONFLICT(date,period,direction,rank) DO UPDATE SET
+      symbol=excluded.symbol, name=excluded.name, price_change=excluded.price_change,
+      last_close=excluded.last_close, close_date=excluded.close_date`);
+  con.transaction((rs: MoverRow[]) => {
+    for (const d of new Set(rs.map((r) => r.date))) clear.run(d);
+    rs.forEach((r) => stmt.run(r));
+  })(rows);
+  return rows.length;
+}
+
+/** The most recent day we hold movers for, at or before `on` -- the same
+ * weekend fallback the board uses, for the same reason. */
+/** The oldest headline on record. Before it, "nothing on the record" means
+ * nobody fetched that day, not that nothing was said. */
+export function newsRecordFrom(con: Database.Database): string | null {
+  const r = con.prepare(`SELECT MIN(date) d FROM event WHERE kind = 'news'`).get() as any;
+  return (r?.d as string) ?? null;
+}
+
+export function latestMoverDate(con: Database.Database, on: string): string | null {
+  const r = con.prepare(`SELECT MAX(date) d FROM mover WHERE date <= ?`).get(on) as any;
+  return (r?.d as string) ?? null;
+}
+
+export function moversOn(con: Database.Database, date: string, period: string): MoverRow[] {
+  return con
+    .prepare(`SELECT * FROM mover WHERE date = ? AND period = ? ORDER BY direction, rank`)
+    .all(date, period) as MoverRow[];
 }
 
 export function symbolsWithHistory(

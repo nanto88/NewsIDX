@@ -9,8 +9,8 @@
  *   npm run backfill -- --poll    # the cheap daily shape: facts since yesterday
  */
 import { Client } from "../src/api.js";
-import { backfillFacts, ensureTicker, fillBoard, fillPrices, fillTicker, pollReports } from "../src/backfill.js";
-import { apiKey, BACKFILL_DAYS, defaultWatchlist, indexSymbol, mockMode, runToday } from "../src/config.js";
+import { backfillFacts, ensureTicker, fillBoard, fillIndexYear, fillMovers, fillPrices, fillTicker, lastSession, pollReports } from "../src/backfill.js";
+import { apiKey, BACKFILL_DAYS, defaultWatchlist, indexChoices, mockMode, runToday } from "../src/config.js";
 import { connect, creditsSpent, endRun, hasPrices, startRun } from "../src/db.js";
 import { shift } from "../src/dates.js";
 
@@ -58,19 +58,29 @@ try {
   // The index first when one is configured: it is the subject of the price
   // strip on the default, unfiltered calendar, so it is the one series every
   // visitor sees. One credit, same 90 days, same permanent cache.
-  for (const s of [indexSymbol(), ...defaultWatchlist()].filter(Boolean) as string[]) {
-    if (hasPrices(con, s, shift(today, -7), today)) continue;
+  // Every offered index, not just the default: the board's index strip shows
+  // each one's day, week, month and year. An index must hold the LAST
+  // session's close for its 1D to mean anything, so it is refreshed whenever
+  // that close is missing; a company only when it has nothing this week.
+  const indices = indexChoices().map((c) => c.symbol);
+  for (const s of [...new Set([...indices, ...defaultWatchlist()])]) {
+    const fresh = indices.includes(s) ? lastSession(today) : shift(today, -7);
+    if (hasPrices(con, s, fresh, today)) continue;
     priced += (await fillPrices(con, client, s, shift(today, -90), today)) > 0 ? 1 : 0;
   }
+  // And a year of history per index, once (4 credits each, then never again).
+  for (const s of indices) await fillIndexYear(con, client, s, today);
 
   // The board: one credit for the 200 largest names, sized and coloured. It is
   // keyed by today, so running the backfill twice in a day writes the same row
   // twice rather than paying twice -- the cache sees the identical URL.
   const drawn = await fillBoard(con, client, today);
+  // The movers: 1 credit for every classification over every period.
+  const moved = await fillMovers(con, client, today);
 
   endRun(con, id, client.spent, client.calls.filter((c) => c.source === "cache").length);
   console.log(
-    `  ${facts.written} fact chips · ${reports.written} report facts · ${filled} tickers filled · ${priced} priced · ${drawn} on the board · ${client.spent} credits this run`
+    `  ${facts.written} fact chips · ${reports.written} report facts · ${filled} tickers filled · ${priced} priced · ${drawn} on the board · ${moved} mover rows · ${client.spent} credits this run`
   );
   if (facts.truncated.length) {
     console.log(`  page cap reached: ${facts.truncated.join(", ")}`);

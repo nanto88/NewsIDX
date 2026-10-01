@@ -54,12 +54,14 @@ bookmark it or send it to someone.
 | Feature | What it does |
 |---|---|
 | **Your 90 days** | A calendar scoped to your watchlist, with everything else on the page still market-wide |
+| **Up next** | The page opens on your book: next event, 7- and 30-day counts, ex-dividend exposure, and one date-sorted table of the 90 days ahead |
 | **Three certainty classes** | Facts, issuer-scheduled dates and predicted windows are drawn as three different shapes, never three colours |
 | **Fitted windows** | Recurring events get a date range fitted from that company's own history, scored walk-forward so the hit rate is measurable today |
 | **Ex-dividend arithmetic** | Dividend over last close, with both inputs printed beside it so you can check the sum |
 | **Tone as a percentage** | Bullish and bearish news tags counted into a share, per event and per page. Nothing tagged shows nothing, not a meaningless 50% |
 | **Cluster warning** | A heads-up when your month bunches: *"three of your eight names land in the week of 21 Sep"* |
 | **The board (sector heatmap)** | A treemap of the 200 largest IDX names, grouped into the eleven IDX sectors, sized by market cap and coloured by the last session's move. Hover a tile for what was on the record. Opens fullscreen for a second screen |
+| **Biggest movers** | Sectors' top five gainers and losers over a day, a week, a fortnight, a month or a year, each with the headlines that were on the record while it moved. All five periods arrive in one call, so switching between them never costs a credit |
 | **Topic filter** | Multi-select, and every topic by default. Topics are OR, so a second pick shows more rather than less. Counts are computed before the filter applies, so an option never vanishes the moment you use it |
 | **Google Calendar export** | Any day on the calendar exports as an all-day event carrying that day's agenda. An empty day still exports, so you can park your own reminder |
 | **Price strip picker** | Price the window against IHSG, LQ45, or one company you pick. A subject with no rows renders as a plain grid, never as a fake average |
@@ -151,7 +153,7 @@ To go live instead, copy `.env.example` to `.env`, put a Sectors key in it, then
 | Command | What it does |
 |---|---|
 | `npm run build` | `tsc -p .` |
-| `npm test` | Builds, then runs 99 tests through `node --test` |
+| `npm test` | Builds, then runs 135 tests through `node --test` |
 | `npm run demo` | Builds the fixture database into `./demo`. No key, no network |
 | `npm run demo:serve` | Serves that database in mock mode |
 | `npm run probes` | Measures the API behaviours the design depends on. About 12 credits |
@@ -353,6 +355,20 @@ first, then headlines, each with a date and a source. Most tiles say "nothing on
 because most days most companies do nothing, and we would rather say that than leave a blank.
 There is a fullscreen button if you want it on a second screen.
 
+**Biggest movers** sits under the board. Five gainers and five losers, ranked by Sectors' own
+list rather than by anything computed here, over any of five periods — a day, a week, a
+fortnight, a month, a year. Under each name are up to three things that were on the record
+while it moved, newest first, with the exchange's own filings and suspensions ahead of press
+coverage. They are shown inline rather than on hover: the treemap hides them because a
+two-percent-wide tile has nowhere to put them, and a list has no such excuse.
+
+Two honest notes on that block. The period switcher is free — every period came back in the
+same call, so changing it is a database read. And **the headlines under a gainer are not the
+reason it gained.** That matters more here than anywhere else on the page, because a headline
+printed under the word "gainer" gets read as the cause unless the page refuses the implication
+out loud. Movers are frequently small companies no outlet covered, so most of them say nothing
+on the record, and the year view admits that our news record does not reach a full year back.
+
 **Worth a look** sits on `/month`. Stories get threaded, so one press release carried by four
 outlets is one row and not four. Then ranked by how hard it was picked up compared to that
 company's own usual rate, and whether it lands on top of a date the issuer already published.
@@ -364,11 +380,60 @@ rhythm and its hit rate, a plain-language summary and FAQ, and an ask box for qu
 that company. The summary needs `ANTHROPIC_API_KEY`; without one the button is simply
 disabled, and the demo serves a fixture so it works with no key.
 
-**The layout.** Below 1200px the agenda is one column, in the order it reads. Above it the
-shell widens to 1340px and the four blocks move into two tracks: the board beside what needs
+**Up next** opens the agenda. It shows four counts: the next event, the next 7 days, the next 30
+days, and ex-dividend dates with the largest expected drop. Dated and predicted are counted
+apart in every tile. Under the counts is one table of the selected names' next 90 days, sorted
+by date, giving days to go, certainty and the expected drop. A holding with nothing ahead is
+named rather than left out. With no companies picked it lists the market's dated events only. **Download CSV** exports the same rows, one per event, for a spreadsheet. The route
+is read-only and cannot spend a credit. A text cell that starts with `=`, `+`, `-` or `@` is
+prefixed with an apostrophe, so a headline cannot run as a formula.
+
+**Accessibility.** Bullish and bearish headlines carry a ▲ or ▼ beside the colour, which a
+screen reader announces as "Bullish" or "Bearish", so tone never depends on colour alone. In
+the light theme, text colours clear WCAG AA's 4.5:1 contrast. Summaries, calendar-export links
+and ticker links in the Up next table have a hit area at least 24px high (WCAG 2.2 target size).
+
+**The layout.** The board opens the agenda, straight under the header and **above the
+filters**. It is the whole market, and it takes neither the company filter nor the topic
+filter. A block drawn under a filter it ignores looks broken, so it sits above them. On a wide
+screen its height is capped at 540px, so the filters and Up next still start on the first
+screen.
+
+Below 1200px the rest of the agenda is one column, in the order it reads. Above it the shell
+widens to 1340px. Up next spans the full width, then two tracks: the movers beside what needs
 attention, the month grid beside the headlines. Placement is grid-area on top of the original
-DOM order, so a screen reader and the tab key still get board, attention, month, headlines
-whatever the width. A day and a company page stay a 780px reading column, because prose set
+DOM order, so a screen reader and the tab key get the board, the filters, then up next,
+movers, attention, month and headlines, whatever the width.
+
+**A date in the calendar opens beside it.** Clicking a day swaps the headlines column for that
+day's scheduled events and facts, with **Close · back to the month** to restore it and a link
+to the full day page. The cell is still a real link, so ⌘/Ctrl-click, middle-click and a
+browser with scripts off all open `/day` as before. The panel is lifted from the day page
+itself, so a day has one renderer. On a priced grid the date number takes the close's
+direction, green up and red down, like the close under it.
+
+**The board filters by sector.** A row of sector chips sits inside the board, each showing
+that sector's cap-weighted move. Picking one redraws the treemap with only that sector, boxed
+by industry (sub-sector), so its names get room to read. **All sectors** clears it. The chips
+are links (`?sector=Financials#board`) that keep the rest of the page, and the page's other
+controls keep the sector in turn. A `?sector=` naming no sector on the board is ignored.
+
+**Index strip.** Over the board, IHSG and LQ45 each show their last close and the move over
+**1D / 1W / 1M / 1Y**: against the previous session, a week, a calendar month and a calendar
+year back. It is a database read. The backfill buys the closes from `/v2/index-daily/{code}/`,
+Sectors' index endpoint (`/v2/daily/` answers nothing for an index). A year of history is
+bought **once**, as four 90-day calls per index (4 credits each). After that, the daily
+90-day fill that the calendar already needs keeps it current, so the strip costs nothing extra
+per day. A period with no close within a week of its date prints a dash rather than borrowing
+a nearer day.
+
+**Paging a day in place.** In the day panel beside the calendar, the facts' Newer / Older
+buttons page inside the panel too. They are still real links to `/day`, so a modified click
+opens the full page.
+
+**Mover notes are one line each.** The headline links to its source (only when the source is
+an http(s) page), followed by the date and the outlet's domain. "News" is not repeated on every
+row, but a filing or a suspension is named, because that is the one worth flagging. A day and a company page stay a 780px reading column, because prose set
 1300px wide is harder to read, not easier.
 
 **On every page**: a multi-select topic filter that defaults to every topic, a
@@ -387,7 +452,7 @@ nobody has fetched before (`FILL_ON_DEMAND`, always on in mock mode).
 npm test
 ```
 
-99 tests through `node --test`, covering the fit, the falsifier, the walk-forward scoring, the
+135 tests through `node --test`, covering the fit, the falsifier, the walk-forward scoring, the
 bucketing, the idempotent upsert, HTML escaping, the treemap geometry, and one assertion that
 fails if a single design-system hex value drifts.
 
@@ -412,6 +477,7 @@ itself to 275 across all runs. The ceiling lives in `config.ts` and is asserted 
 | Closes fetched during backfill, never on a page view | 1 credit per name buys 90 days, and browsing can never spend |
 | One index series for the price strip, not 950 tickers | 1 credit colours the default calendar for everyone |
 | The board is a single `/v2/companies/` call | sector, market cap and daily change for 200 companies at once. Per-ticker it would be 200 credits against a 275 ceiling, which is to say it would not exist |
+| The movers are a single `/v2/companies/top-changes/` call | `periods` is a comma-separated list, so five periods cost what one does. That is the only reason the switcher offers five — under a per-period price it would have offered one |
 
 Every run writes what it spent to the `run` table, and that is where the ceiling reads its
 lifetime total from:
@@ -433,13 +499,13 @@ NewsIDX/
 │   ├── predict.ts .......... the two fits, the falsifier, the ex-dividend arithmetic
 │   ├── attention.ts ........ threading headlines, nearest dated event, the ranked list
 │   ├── calendar.ts ......... view models. Facts and windows meet here, never in the db
-│   ├── heatmap.ts .......... the board, a squarified treemap of the 200 largest names
+│   ├── heatmap.ts .......... the board (a squarified treemap) and the ranked movers
 │   ├── faq.ts .............. the one place a model is involved
 │   ├── render.ts ........... server-rendered HTML
 │   ├── server.ts ........... the routes: agenda, month, day, ticker, two FAQ endpoints
 │   ├── config.ts ........... env, paths, the credit ceiling, the design tokens
 │   ├── cache.ts, dates.ts, stats.ts
-│   ├── *.test.ts ........... 99 tests
+│   ├── *.test.ts ........... 135 tests
 │   └── mock/fixtures.ts .... made-up data in the API's own response shapes
 ├── scripts/
 │   ├── backfill-run.ts ..... the backfill entry point

@@ -14,16 +14,27 @@
  */
 import type { Database } from "better-sqlite3";
 import type { Client } from "./api.js";
-import { BOARD_LIMIT, BOARD_MIN_MCAP, PAGE_CAP, PAGE_LIMIT } from "./config.js";
+import {
+  BOARD_LIMIT,
+  BOARD_MIN_MCAP,
+  isIndex,
+  MOVER_COUNT,
+  MOVER_PERIODS,
+  PAGE_CAP,
+  PAGE_LIMIT,
+} from "./config.js";
 import {
   type EventRow,
   getCoverage,
+  hasPrices,
   markCoverage,
+  type MoverRow,
   type Span,
   touchTicker,
   tickerFetchedAt,
   upsertBoard,
   upsertEvents,
+  upsertMovers,
   upsertPrices,
 } from "./db.js";
 import { shift, today as todayIso, year } from "./dates.js";
@@ -70,30 +81,62 @@ async function paged(
  * in slices from today backwards until the page budget runs out. Partial
  * coverage is then always "everything back to <date>", which is the only kind
  * of partial this product can render honestly.
+ *
+ * When a slice itself outruns the budget, it still counts every day it walked
+ * past. The feeds page newest-first -- measured on every cached page of
+ * news, filings and suspensions -- so a truncated slice that reached back to
+ * day D holds D+1..sliceTo whole; only D may be partial. Claiming just
+ * sliceTo (the old rule) marked four fetched days as missing, and the next
+ * run bought them again. If a slice's rows are NOT newest-first, the order is
+ * unknown and nothing in it is claimed.
+ *
+ * `coveredFrom` can come back AFTER `to` when not even the newest day
+ * finished: nothing is complete, and the caller must not mark any of it.
  */
-async function pagedRange(
+export async function pagedRange(
   client: Client,
   path: string,
   from: string,
   to: string,
   cap = PAGE_CAP,
-  sliceDays = 15
+  sliceDays = 15,
+  dateOf: (row: any) => string = (r) => isoDate(r.timestamp)
 ): Promise<{ rows: any[]; coveredFrom: string; truncated: boolean }> {
   const first = await paged(client, path, { start: from, end: to }, 1);
   if (!first.truncated) return { rows: first.rows, coveredFrom: from, truncated: false };
 
+  // The first day of [lo,hi] that a truncated, newest-first walk holds whole:
+  // the day after the oldest it reached. hi + 1 means none.
+  const walked = (got: any[], lo: string, hi: string): string => {
+    const dates = got.map(dateOf).filter(Boolean);
+    const newestFirst = dates.every((d, i) => i === 0 || d <= dates[i - 1]);
+    const oldest = dates.at(-1);
+    if (!newestFirst || !oldest) return shift(hi, 1);
+    const done = shift(oldest, 1);
+    return done < lo ? lo : done;
+  };
+
   const rows = [...first.rows];
   let budget = cap - 1;
   let sliceTo = to;
-  let coveredFrom = to;
+  // Until a slice finishes, what is held is what the first page walked.
+  let coveredFrom = walked(first.rows, from, to);
   while (budget > 0 && sliceTo >= from) {
     const sliceFrom = shift(sliceTo, -(sliceDays - 1));
     const start = sliceFrom < from ? from : sliceFrom;
     const slice = await paged(client, path, { start, end: sliceTo }, budget);
     rows.push(...slice.rows);
     budget -= Math.max(1, slice.pages);
-    coveredFrom = slice.truncated ? sliceTo : start;
-    if (slice.truncated) break; // this slice alone outran the budget
+    if (slice.truncated) {
+      // This slice alone outran the budget: keep the days it walked past. The
+      // first page is re-read here, so the slice's own walk is the better
+      // measure -- and when it finished nothing, that is the slice after an
+      // earlier complete one (or, for the first slice, nothing at all).
+      const done = walked(slice.rows, start, sliceTo);
+      coveredFrom = done < coveredFrom || sliceTo === to ? done : coveredFrom;
+      break;
+    }
+    coveredFrom = start;
     sliceTo = shift(start, -1);
     if (start === from) return { rows, coveredFrom: from, truncated: false };
   }
@@ -144,7 +187,8 @@ async function rangeFeed(
   feed: string,
   path: string,
   from: string,
-  to: string
+  to: string,
+  dateOf: (row: any) => string = (r) => isoDate(r.timestamp)
 ): Promise<{ rows: any[]; truncated: boolean; coveredFrom: string }> {
   const spans = missingSpans(getCoverage(con, feed), from, to);
   const rows: any[] = [];
@@ -152,15 +196,17 @@ async function rangeFeed(
   let coveredFrom = from;
 
   for (const [a, b] of spans) {
-    const r = await pagedRange(client, path, a, b);
+    const r = await pagedRange(client, path, a, b, PAGE_CAP, 15, dateOf);
     rows.push(...r.rows);
     if (r.truncated) {
       truncated = true;
       if (r.coveredFrom > coveredFrom) coveredFrom = r.coveredFrom;
     }
     // Marked per span, not once at the end: a run stopped by the credit
-    // ceiling mid-sweep must still keep what it paid for.
-    markCoverage(con, feed, r.truncated ? r.coveredFrom : a, b);
+    // ceiling mid-sweep must still keep what it paid for. A span in which not
+    // even its newest day finished is marked as nothing.
+    const done = r.truncated ? r.coveredFrom : a;
+    if (done <= b) markCoverage(con, feed, done, b);
   }
   return { rows, truncated, coveredFrom };
 }
@@ -211,7 +257,9 @@ export async function backfillFacts(
     });
   }
 
-  const susp = await rangeFeed(con, client, "suspensions", "/v2/suspensions/", from, to);
+  const susp = await rangeFeed(con, client, "suspensions", "/v2/suspensions/", from, to, (r) =>
+    isoDate(r.suspension_date)
+  );
   if (susp.truncated) {
     truncated.push(`suspensions (complete back to ${susp.coveredFrom})`);
     if (susp.coveredFrom > coveredFrom) coveredFrom = susp.coveredFrom;
@@ -439,13 +487,49 @@ export async function fillPrices(
   const sym = bare(symbol);
   const span = Math.min(90, Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 864e5)));
   const start = shift(to, -span);
-  const { body } = await client.tryGet(`/v2/daily/${sym}/`, { start, end: to }, 1);
+  // An index has its own endpoint and calls its close `price`; a company is
+  // /v2/daily/ and `close`. Stored under the same symbol either way.
+  const path = isIndex(sym) ? `/v2/index-daily/${sym.toLowerCase()}/` : `/v2/daily/${sym}/`;
+  const { body } = await client.tryGet(path, { start, end: to }, 1);
   const rows: any[] = Array.isArray(body?.results) ? body.results : Array.isArray(body) ? body : [];
   return upsertPrices(
     con,
     sym,
-    rows.map((r) => ({ date: isoDate(r.date), close: r.close ?? null, volume: r.volume ?? null }))
+    rows.map((r) => ({ date: isoDate(r.date), close: r.close ?? r.price ?? null, volume: r.volume ?? null }))
   );
+}
+
+/**
+ * A year of an index's closes, bought ONCE: four 90-day calls (the endpoint's
+ * limit), 4 credits. Closes are kept forever and the daily fill extends them,
+ * so the year-ago close is already held on every later day -- one dated call
+ * a day for "a year ago" would be a new URL, and a new credit, every day.
+ * Skipped when the far end is already held.
+ */
+export async function fillIndexYear(
+  con: Database,
+  client: Client,
+  symbol: string,
+  today: string = todayIso()
+): Promise<number> {
+  const from = shift(today, -372); // a week of slack for holidays around the anniversary
+  const to = shift(today, -91); // the daily 90-day fill covers the rest
+  if (hasPrices(con, symbol, from, shift(from, 14))) return 0;
+  let n = 0;
+  for (let s = from; s <= to; s = shift(s, 90)) {
+    const e = shift(s, 89) < to ? shift(s, 89) : to;
+    n += await fillPrices(con, client, symbol, s, e);
+  }
+  return n;
+}
+
+/** The last weekday before `today` -- the session whose close a run on
+ * `today` should already hold. ponytail: weekends only; an IDX holiday means
+ * one extra (cached, same-day) call, not a wrong number. */
+export function lastSession(today: string): string {
+  let d = shift(today, -1);
+  while ([0, 6].includes(new Date(`${d}T00:00:00Z`).getUTCDay())) d = shift(d, -1);
+  return d;
 }
 
 /**
@@ -477,7 +561,8 @@ export async function fillBoard(
       limit: BOARD_LIMIT,
       include_query_values: true,
     },
-    1
+    1,
+    true // a snapshot of today: the URL carries no date, so the cache cannot answer it
   );
   const rows: any[] = Array.isArray(body?.results) ? body.results : Array.isArray(body) ? body : [];
   return upsertBoard(
@@ -495,6 +580,60 @@ export async function fillBoard(
       };
     })
   );
+}
+
+/**
+ * Every period's biggest gainers and losers, for 1 credit.
+ *
+ * `periods` is comma-separated, measured -- one call returns a nested
+ * {classification: {period: rows}} for every combination asked for. So five
+ * periods cost what one does, and the only reason to ask for fewer would be a
+ * UI that could not show them.
+ *
+ * `n_stock` caps at 10: asking for 20 returns 10, and the API does not say so
+ * in an error. Hence MOVER_COUNT rather than a number typed at the call site.
+ */
+export async function fillMovers(
+  con: Database,
+  client: Client,
+  date: string = todayIso()
+): Promise<number> {
+  const { body } = await client.tryGet(
+    "/v2/companies/top-changes/",
+    {
+      classifications: "top_gainers,top_losers",
+      periods: MOVER_PERIODS.join(","),
+      n_stock: MOVER_COUNT,
+    },
+    1,
+    true // same: "top changes" means as of now, and the URL never changes
+  );
+  const out: MoverRow[] = [];
+  for (const [key, direction] of [
+    ["top_gainers", "gainer"],
+    ["top_losers", "loser"],
+  ] as const) {
+    const byPeriod = body?.[key] ?? {};
+    for (const period of MOVER_PERIODS) {
+      const rows: any[] = Array.isArray(byPeriod[period]) ? byPeriod[period] : [];
+      rows.forEach((r, i) =>
+        out.push({
+          date,
+          period,
+          direction,
+          // The API's own ordering is the ranking -- it sorted by the move, and
+          // re-sorting here would be this product inventing a second one.
+          rank: i + 1,
+          symbol: bare(r.symbol),
+          name: String(r.name ?? r.symbol ?? ""),
+          price_change: r.price_change ?? null,
+          last_close: r.last_close_price ?? null,
+          close_date: isoDate(r.latest_close_date) || null,
+        })
+      );
+    }
+  }
+  return upsertMovers(con, out);
 }
 
 /** Fill a symbol only if it has never been filled. Corporate actions do not

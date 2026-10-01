@@ -89,3 +89,50 @@ test("the response cache lives in the database and survives a reconnect", async 
   const { cacheSize } = await import("./db.js");
   assert.equal(cacheSize(con).entries, 1);
 });
+
+test("a snapshot endpoint asks the API every time; a dated one is answered by the cache", async () => {
+  const { Client } = await import("./api.js");
+  const { makeCache } = await import("./cache.js");
+  const con = fresh();
+  const saved = { key: process.env.SECTORS_API_KEY, mock: process.env.MOCK_MODE, fetch: globalThis.fetch };
+  process.env.SECTORS_API_KEY = "test-placeholder-not-a-key";
+  delete process.env.MOCK_MODE;
+  let hits = 0;
+  globalThis.fetch = (async () => {
+    hits++;
+    return new Response(JSON.stringify({ as_of: "today" }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    // Yesterday's answer, under a URL that carries no date.
+    makeCache(con).set("https://api.sectors.app/v2/companies/top-changes/?n_stock=5", { as_of: "yesterday" });
+    const client = new Client(con);
+    assert.deepEqual(await client.get("/v2/companies/top-changes/", { n_stock: 5 }, 1), { as_of: "yesterday" });
+    assert.equal(hits, 0, "without fresh the cache answers");
+    assert.deepEqual(await client.get("/v2/companies/top-changes/", { n_stock: 5 }, 1, true), { as_of: "today" });
+    assert.equal(hits, 1, "fresh goes to the API");
+    assert.deepEqual(
+      makeCache(con).get("https://api.sectors.app/v2/companies/top-changes/?n_stock=5"),
+      { as_of: "today" },
+      "and the new answer replaces the old one"
+    );
+  } finally {
+    globalThis.fetch = saved.fetch;
+    if (saved.key === undefined) delete process.env.SECTORS_API_KEY; else process.env.SECTORS_API_KEY = saved.key;
+    if (saved.mock !== undefined) process.env.MOCK_MODE = saved.mock;
+  }
+});
+
+test("a day's board is replaced by a new fetch, never merged, and never wiped by an empty one", async () => {
+  const { upsertBoard, boardOn } = await import("./db.js");
+  const con = fresh();
+  const tile = (symbol: string, close_change: number) => ({
+    date: "2026-09-30", symbol, name: symbol, sector: "Financials", sub_sector: "Banks",
+    market_cap: 1e12, close_change,
+  });
+  upsertBoard(con, [tile("BBCA", 0.01), tile("KPIG", -0.02)]);
+  upsertBoard(con, [tile("BBCA", 0.03)]);
+  assert.deepEqual(boardOn(con, "2026-09-30").map((r) => [r.symbol, r.close_change]), [["BBCA", 0.03]],
+    "a name that left the snapshot leaves the board");
+  upsertBoard(con, []);
+  assert.equal(boardOn(con, "2026-09-30").length, 1, "and a failed call keeps what we had");
+});

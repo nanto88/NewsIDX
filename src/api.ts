@@ -53,10 +53,19 @@ const COSTS: Record<string, number> = {
   "/v2/company/get_quarterly_financial_dates/": 1,
   "/v2/companies/quarterly-financial-dates/": 1, // PER PAGE of 30 (~32 for a full sweep)
   "/v2/companies/": 1, // structured query; ?q= is 3 and stays unused
+  // Listed explicitly even though the `/v2/companies/` prefix above would
+  // match it: a longer prefix wins, so leaving it out would have priced this
+  // by accident rather than on purpose. Measured at 1 -- and one call carries
+  // every classification and every period asked for.
+  "/v2/companies/top-changes/": 1,
   "/v2/filings/": 1, // per page of 30, market-wide
   "/v2/suspensions/": 1, // per page of 30
   "/v2/news/": 1, // per page of 30
   "/v2/daily/": 1,
+  // An index is not a stock, and /v2/daily/ answers nothing for IHSG. This is
+  // the documented index endpoint (docs.sectors.app, "Index Daily
+  // Transaction Data"): lowercase code, up to 90 days, 1 credit.
+  "/v2/index-daily/": 1,
   "/v2/subsectors/": 1,
   "/v2/tags/": 1,
 };
@@ -110,8 +119,13 @@ export class Client {
    * GET a Sectors endpoint. `cost` is the documented credit price and must be
    * passed explicitly at every call site -- a wrong number here silently
    * breaks the budget, so it is never inferred from the path.
+   *
+   * `fresh` skips the cache READ (the answer is still written). For endpoints
+   * that answer "as of now" with no date in the URL -- the board, the movers --
+   * the URL is the same every day, so a cache hit is yesterday's answer
+   * served under today's date.
    */
-  async get(path: string, params?: Record<string, unknown>, cost = 1): Promise<any> {
+  async get(path: string, params?: Record<string, unknown>, cost = 1, fresh = false): Promise<any> {
     const doc = documentedCost(path);
     if (doc !== null && doc !== cost) {
       throw new Error(
@@ -130,7 +144,7 @@ export class Client {
     const qs = buildQuery(params ?? {});
     const url = `${BASE_URL}${path}${qs ? `?${qs}` : ""}`;
 
-    const cached = this.cache.get(url);
+    const cached = fresh ? undefined : this.cache.get(url);
     if (cached !== undefined) {
       this.calls.push({ url, cost: 0, source: "cache" });
       return cached;
@@ -182,10 +196,11 @@ export class Client {
   async tryGet(
     path: string,
     params?: Record<string, unknown>,
-    cost = 1
+    cost = 1,
+    fresh = false
   ): Promise<{ body: any | null; error: string | null }> {
     try {
-      return { body: await this.get(path, params, cost), error: null };
+      return { body: await this.get(path, params, cost, fresh), error: null };
     } catch (e) {
       if (e instanceof BudgetExhausted) throw e;
       return { body: null, error: String((e as Error).message ?? e) };

@@ -9,7 +9,7 @@
  */
 import Fastify from "fastify";
 import { Client } from "./api.js";
-import { day, month, pulseOver, TAG_QUERY_MAX, timeline, type Timeline } from "./calendar.js";
+import { day, month, pulseOver, TAG_QUERY_MAX, timeline, type Timeline, upcoming } from "./calendar.js";
 import { needsAttention } from "./attention.js";
 import {
   anthropicKey,
@@ -19,6 +19,7 @@ import {
   indexChoices,
   indexSymbol,
   mockMode,
+  parseMoverPeriod,
   parseWatchlist,
   port,
   runToday,
@@ -34,14 +35,15 @@ import {
   hasPrices,
   lastRun,
   latestBoardDate,
+  latestMoverDate,
   recentAsks,
   startRun,
   tickerFetchedAt,
 } from "./db.js";
-import { ensureTicker, fillBoard, fillPrices } from "./backfill.js";
-import { board } from "./heatmap.js";
+import { ensureTicker, fillBoard, fillMovers, fillPrices } from "./backfill.js";
+import { board, indexReturns, movers } from "./heatmap.js";
 import { askFaq, ensureFaq, fingerprint, MAX_QUESTION } from "./faq.js";
-import { renderDay, renderMonth, renderTicker, type FaqView } from "./render.js";
+import { renderDay, renderMonth, renderTicker, type FaqView, upNextCsv } from "./render.js";
 
 const con = connect();
 
@@ -110,6 +112,28 @@ async function fillBoardToday(): Promise<void> {
   const id = startRun(con, `board: ${today}`);
   try {
     await fillBoard(con, client, today);
+    endRun(con, id, client.spent, client.calls.filter((c) => c.source === "cache").length);
+  } catch (e) {
+    endRun(con, id, client.spent, 0, String((e as Error).message ?? e));
+  }
+}
+
+/**
+ * Every period's biggest movers, for 1 credit, once a day.
+ *
+ * Same guard as the board and for the same reason: keyed by the day we asked,
+ * so a reload reads the rows it already has. The five periods came back in one
+ * response, so switching between them on the page is a database read and can
+ * never cost anything.
+ */
+async function fillMoversToday(): Promise<void> {
+  if (!fillOnDemand()) return;
+  const today = runToday();
+  if (latestMoverDate(con, today) === today) return;
+  const client = new Client(con, creditsSpent(con));
+  const id = startRun(con, `movers: ${today}`);
+  try {
+    await fillMovers(con, client, today);
     endRun(con, id, client.spent, client.calls.filter((c) => c.source === "cache").length);
   } catch (e) {
     endRun(con, id, client.spent, 0, String((e as Error).message ?? e));
@@ -208,6 +232,7 @@ const renderAgendaPage = async (req: any, reply: any) => {
   const w = watchlistFrom(q);
   await fill(w);
   await fillBoardToday();
+  await fillMoversToday();
   const today = runToday();
   const ym = /^\d{4}-\d{2}$/.test(String(q.month ?? "")) ? String(q.month) : today.slice(0, 7);
   // A price strip needs one subject. `?price=` is the reader's choice from the
@@ -235,14 +260,17 @@ const renderAgendaPage = async (req: any, reply: any) => {
   // ticking a second box shows more, not less. The cap is generous enough for
   // MAX_TAGS long labels and small enough that the URL is not a payload;
   // parseTags() enforces the real limit on how many survive.
-  // EVERY block on the page takes it -- board, attention, grid and headlines --
-  // because a filtered list beside three unfiltered ones is four answers to
-  // the same question.
+  // Every block UNDER the filters takes it -- movers, attention, grid and
+  // headlines -- because a filtered list beside three unfiltered ones is four
+  // answers to the same question. The board sits above the filters and takes
+  // none of them.
   const tag = String(q.tag ?? "").slice(0, TAG_QUERY_MAX);
   // `?who=` narrows the headline list to one company, and only that list.
   // Normalised through the same parser as the companies bar, so it is a
   // ticker or it is nothing.
   const who = parseWatchlist(q.who)[0] ?? "";
+  // `?movers=` is one of the five period names or it is the default.
+  const moverPeriod = parseMoverPeriod(q.movers);
   const pulseTo = monthEnd < today ? shift(monthEnd, -1) : today;
   return renderMonth(month(con, ym, today, { symbols: w, index, priceSymbol, tag }), ym, w, {
     ...shellOpts(),
@@ -252,17 +280,48 @@ const renderAgendaPage = async (req: any, reply: any) => {
     // question. Deliberately NOT filtered by the tag: a tag narrows what you
     // are reading, and silently hiding the month's biggest story because it
     // carries a different one would defeat the point of the block.
+    upcoming: upcoming(con, w, today),
     attention: needsAttention(con, { from: monthStart, to: pulseTo, today, watchlist: w, tag }),
     pulse: pulseOver(con, monthStart, pulseTo, w, tag, pageFrom(q), who),
-    // The board is market-wide on purpose and takes no watchlist: everything
-    // else on this page is about the selected names, and this is the market
-    // they sit in.
-    board: board(con, runToday(), tag),
+    // The board is market-wide on purpose and takes no filter at all -- not
+    // the watchlist, not the topic. It sits above both on the page, and a
+    // board thinned by a topic its position says it ignores is a board that
+    // looks broken.
+    // `?sector=` narrows the board and only the board -- its own picker, not
+    // a page filter. board() matches it against the sectors actually drawn.
+    board: board(con, runToday(), "", String(q.sector ?? "").slice(0, 60)),
+    // A database read: the backfill buys the closes, this only divides them.
+    indexReturns: indices
+      .map((i) => indexReturns(con, i.symbol, i.label, runToday()))
+      .filter((x): x is NonNullable<typeof x> => x !== null),
+    // `?movers=` picks the period. Every one of them is already in the
+    // database -- they arrived in the same call -- so this switch is free.
+    movers: movers(con, runToday(), moverPeriod, tag),
+    // What the period switcher must carry so changing it does not drop the
+    // month, the companies, the price subject or the topic.
+    keep: {
+      month: ym,
+      w: w.join(",") || undefined,
+      price: priceSymbol ?? undefined,
+      tag: tag || undefined,
+      who: who || undefined,
+      sector: String(q.sector ?? "").slice(0, 60) || undefined,
+    },
   });
 };
 
 app.get("/", renderAgendaPage);
 app.get("/month", renderAgendaPage);
+
+// Read-only: no fill, so a download can never spend a credit.
+app.get("/upnext.csv", async (req, reply) => {
+  const w = watchlistFrom(req.query as any);
+  const today = runToday();
+  reply
+    .type("text/csv; charset=utf-8")
+    .header("content-disposition", `attachment; filename="newsidx-upnext-${today}.csv"`);
+  return upNextCsv(upcoming(con, w, today), today);
+});
 
 app.get("/day", async (req, reply) => {
   const q = req.query as any;
