@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 
 import { test } from "node:test";
 import { EQUITY_BANDS, INDEX_BANDS } from "./config.js";
-import { chip, domainOf, renderDay, upNext, upNextCsv, esc, gcalUrl, page, paginate, pct, priceBand, renderBoard, renderMonth, renderMovers, renderTicker, sentClass, STYLE, tagPhrase } from "./render.js";
+import { chip, domainOf, filterBar, renderDay, renderMarket, upNext, upNextCsv, esc, gcalUrl, page, paginate, pct, priceBand, renderBoard, renderMonth, renderMovers, renderTicker, sentClass, STYLE, tagPhrase } from "./render.js";
 import type { Cell, Item } from "./calendar.js";
 import type { Board, Mover, Movers, Tile } from "./heatmap.js";
 
@@ -86,7 +86,7 @@ test("the two classes render as two different shapes", () => {
   assert.match(chip(schedItem), /class="chip sched"/);
 });
 
-test("a headline is green when Sectors tagged it Bullish, red for Bearish, default otherwise", () => {
+test("a headline is marked Bullish or Bearish when Sectors tagged it, and plain otherwise", () => {
   assert.equal(sentClass(bullish), "pos tone");
   assert.equal(sentClass(bearish), "neg tone");
   assert.equal(sentClass(plain), "", "a topic tag gets the page's own colour");
@@ -150,10 +150,10 @@ test("markup is escaped, so a title from the API cannot inject", () => {
 
 test("the company filter adds one at a time, so its dropdown keeps working", () => {
   const known = ["ANTM", "BBCA", "ICBP", "TLKM"];
-  const shell = { title: "t", active: "month", mock: false, asOf: null, credits: null, body: "", known, self: "/month" };
+  const bar = (watchlist: string[]) => filterBar({ action: "/month", watchlist, known });
 
   // Nothing picked: every company, and every option on offer.
-  const all = page({ ...shell, watchlist: [] });
+  const all = bar([]);
   assert.match(all, /class="pill all">All companies</);
   assert.match(all, /All 4 companies/);
   for (const s of known) assert.ok(all.includes(`<option value="${s}">`), `${s} is offered`);
@@ -161,7 +161,7 @@ test("the company filter adds one at a time, so its dropdown keeps working", () 
   // Two picked: the box is EMPTY and named `add`, not the whole list. A
   // datalist matches the entire field, so a box holding "BBCA,TLKM" would
   // offer nothing at all.
-  const some = page({ ...shell, watchlist: ["BBCA", "TLKM"] });
+  const some = bar(["BBCA", "TLKM"]);
   assert.match(some, /name="add" list="wl-known" value=""/);
   assert.match(some, /<input type="hidden" name="w" value="BBCA,TLKM">/);
   assert.match(some, /2 of 4 companies/);
@@ -170,10 +170,11 @@ test("the company filter adds one at a time, so its dropdown keeps working", () 
   assert.ok(some.includes('<option value="ANTM">'), "the rest stay available");
   // Each pill removes just itself, and there is a way back to everything.
   assert.match(some, /href="\/month\?w=TLKM"[^>]*aria-label="Remove BBCA"/s);
-  assert.match(some, />Show all</);
+  assert.match(some, /class="f-clear" href="\/month">Clear filters</);
+  assert.ok(!/f-clear/.test(all), "and no Clear while nothing is narrowed");
 
   // A ticker we hold nothing for says so, instead of rendering an empty page.
-  assert.match(page({ ...shell, watchlist: ["NOPE"] }), /No rows on record for <b>NOPE<\/b>/);
+  assert.match(bar(["NOPE"]), /No rows on record for <b>NOPE<\/b>/);
 });
 
 test("the shell carries the fixture banner only in mock mode", () => {
@@ -297,7 +298,7 @@ test("the FAQ button is a POST, and is dead when generation is unavailable", () 
   const view = { row, stale: false, available: true, rows: 4, model: "claude-sonnet-5", asked: [] };
   const fresh = renderTicker(t, [], { ...opts, faq: view });
   assert.match(fresh, /<details><summary>Q1\?<\/summary>/, "one native details per question");
-  assert.match(fresh, /News summary · generated/);
+  assert.match(fresh, /<h2>News summary<\/h2><span class="sub">generated<\/span>/);
   assert.match(fresh, /Four headlines are on record\./);
   // Every generated claim carries the rows it rests on, as a link we built.
   assert.match(fresh, /<div class="cites"><span class="lb">Source<\/span><a href="https:\/\/www\.cnbcindonesia\.com\/x"/);
@@ -311,16 +312,18 @@ test("the FAQ button is a POST, and is dead when generation is unavailable", () 
   const stale = renderTicker(t, [], { ...opts, faq: { ...view, stale: true, rows: 9 } });
   assert.match(stale, /Regenerate — there are newer rows/);
 
-  // The counts, and the tags that are not the sentiment ones.
-  assert.match(fresh, /<b>3<\/b> positive/);
-  assert.match(fresh, /<b>1<\/b> negative/);
-  // One Topic filter, in the shell above the page, filtering THIS page.
-  assert.match(fresh, /<form method="get" action="\/ticker">/, "the topic bar submits back to the company page");
-  assert.match(fresh, /class="tag" href="\/ticker\?symbol=BBCA&amp;tag=Dividend"/, "a tag narrows this company's rows");
-  assert.ok(!/class="taglist"/.test(fresh), "and is not repeated as a second list inside the page");
+  // The provider's counts, as one line wearing the sentiment glyphs.
+  assert.match(fresh, /<b>3<\/b> bullish/);
+  assert.match(fresh, /<b>1<\/b> bearish/);
+  // The same filter bar as every page, with a one-company picker in place of
+  // the companies field: this page is about exactly one name.
+  assert.match(fresh, /<form class="fbar" method="get" action="\/ticker">/, "the bar submits back to the company page");
+  assert.match(fresh, /<select name="symbol" aria-label="Company"><option value="BBCA" selected>/);
+  assert.match(fresh, /<input type="checkbox" name="tag" value="Dividend">Dividend/, "a topic narrows this company's rows");
+  assert.ok(!/name="add"/.test(fresh), "and no multi-company box where only one company fits");
 });
 
-test("topic chips are multi-select, and the default is every topic", () => {
+test("topics are multi-select checkboxes, and the default is every topic", () => {
   const pulse = (tag: string) => ({
     from: "2026-09-01", to: "2026-09-30", tag, who: "", headlines: [], total: 0,
     page: 1, pages: 1, offset: 0,
@@ -328,35 +331,40 @@ test("topic chips are multi-select, and the default is every topic", () => {
     tickers: [],
   });
   const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
+  const box = (label: string, on: boolean) =>
+    `<input type="checkbox" name="tag" value="${label}"${on ? " checked" : ""}>${label}`;
 
   // Nothing picked is the default, and it hides nothing.
   const off = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("") });
-  assert.match(off, /href="\/\?month=2026-09&amp;tag=Dividend"[^>]*aria-pressed="false"/, "unfiltered, a chip adds itself");
-  // Scoped to a chip: the page carries its own stylesheet, and that names the
-  // selector too.
-  assert.ok(!/class="tag[^"]*"[^>]*aria-pressed="true"/.test(off), "and nothing reads as selected");
-  assert.ok(!/class="tag[^"]*" href="[^"]*#headlines"/.test(off), "and does not jump to the list it narrows");
-  assert.ok(!/>Clear</.test(off), "with no Clear to offer");
+  assert.ok(off.includes(box("Dividend", false)) && off.includes(box("Bullish", false)), "nothing reads as selected");
+  assert.match(off, /<span class="n">4<\/span>/, "each option carries its count");
+  assert.ok(!/Clear topics/.test(off), "with no Clear to offer");
+  // One form: the checkboxes submit with the month the page is on.
+  assert.match(off, /<form class="fbar" method="get" action="\/">[\s\S]*name="month" value="2026-09"[\s\S]*name="tag"/);
 
-  // A second chip APPENDS rather than replacing. This is the whole feature.
+  // Picked boxes are the state, so a second tick adds rather than replaces.
   const one = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("Dividend") });
-  assert.match(one, /href="\/\?month=2026-09&amp;tag=Dividend%2CBullish"/, "a second chip adds to the selection");
-  assert.match(one, /href="\/\?month=2026-09"[^>]*aria-pressed="true"/, "and the picked one removes just itself");
+  assert.ok(one.includes(box("Dividend", true)) && one.includes(box("Bullish", false)));
 
-  // With two picked, each chip drops only itself and leaves the other standing.
   const two = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("Dividend,Bullish") });
-  assert.match(two, /href="\/\?month=2026-09&amp;tag=Bullish"[^>]*aria-pressed="true"/, "dropping Dividend keeps Bullish");
-  assert.match(two, /href="\/\?month=2026-09&amp;tag=Dividend"[^>]*aria-pressed="true"/, "dropping Bullish keeps Dividend");
-  assert.match(two, /Clear all 2</, "and one link clears the lot");
-  assert.match(two, /value="Dividend, Bullish"/, "the text box shows the same list it would submit");
+  assert.ok(two.includes(box("Dividend", true)) && two.includes(box("Bullish", true)));
+  assert.match(two, /popovertarget="f-topics"[^>]*>2 topics</, "the button says how many are on");
+  assert.match(two, /class="f-clear" href="\/\?month=2026-09">Clear topics</, "and one link clears the lot");
 });
 
-test("an active filter is orange, so a narrowed page is visible at a glance", () => {
-  assert.ok(STYLE.includes("--on:#ff9f43"), "the on-colour is its own token, not the product accent");
-  assert.match(STYLE, /\.tb \.tag\[aria-pressed="true"\]\{border-color:var\(--on\)/);
-  assert.match(STYLE, /\.tb \.tag\[aria-pressed="true"\]::before\{content:"\u2713 "/, "and a tick, so toggles do not read as links");
-  assert.match(STYLE, /\.pulse a\.tag\[aria-current="true"\]\{border-color:var\(--on\)/);
-  assert.match(STYLE, /\.tb a\.clear\{color:var\(--on\)/, "and so is the way back out of it");
+test("each colour has one role: price, sentiment, alert", () => {
+  // Green and red are a price move and nothing else.
+  assert.ok(STYLE.includes(".pos{color:var(--up)}") && STYLE.includes(".neg{color:var(--down)}"));
+  // Sentiment is a glyph colour of its own; the headline stays body text.
+  assert.match(STYLE, /--bull:#[0-9a-f]{6}; --bear:#[0-9a-f]{6}/);
+  assert.ok(STYLE.includes(".tone.pos,.tone.neg{color:inherit}"), "a tagged headline is not painted like a price");
+  assert.match(STYLE, /\.tone\.pos::before\{[^}]*color:var\(--bull\)/);
+  // Urgency is amber, never the price red.
+  assert.match(STYLE, /--alert:#f5a524/);
+  assert.match(STYLE, /\.att \.story\.hi\{border-color:color-mix\(in srgb,var\(--alert\)/);
+  // An active filter is the primary, filled -- the bar is the one place it lives.
+  assert.match(STYLE, /\.f-drop\.on\{background:var\(--primary-wash\)/);
+  assert.ok(!STYLE.includes("var(--on)"), "the old orange on-colour is gone");
 });
 
 test("the price strip filter offers the selection, and lands you back on itself", () => {
@@ -656,20 +664,15 @@ test("the default state says every topic is showing, rather than looking switche
   const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
 
   const off = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("") });
-  assert.match(off, /class="tag all">All 2 tags on record</, "nothing picked reads as everything showing");
-  assert.match(off, /All 2 tags on record shown/, "and the count agrees");
-
-  // The all-pill is the primary wash, NOT the orange that means a filter is
-  // narrowing the page -- otherwise 'showing everything' and 'showing less'
-  // would look the same.
-  assert.match(STYLE, /\.tb \.tag\.all\{color:var\(--primary-dark\)/);
-  assert.ok(!/\.tb \.tag\.all\{[^}]*var\(--on\)/.test(STYLE), "and never wears the filter-is-on colour");
+  assert.match(off, /class="f-drop" popovertarget="f-topics"[^>]*>All 2 topics</, "nothing picked reads as everything showing");
+  assert.match(off, /every topic/, "and the count agrees");
 
   const on = renderMonth([], "2026-09", [], { ...opts, pulse: pulse("Dividend") });
-  assert.ok(!/class="tag all"/.test(on), "and it goes away once a topic is picked");
+  assert.match(on, /class="f-drop on" popovertarget="f-topics"[^>]*>Dividend</, "a narrowed bar looks narrowed");
+  assert.match(on, /1 headline|0 headlines tagged/);
 });
 
-test("the agenda takes the desktop width; a day and a company stay a reading column", () => {
+test("the agenda takes the desktop width; a day stays a reading column", () => {
   const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
   const agenda = renderMonth([], "2026-09", [], {
     ...opts,
@@ -691,13 +694,9 @@ test("the dashboard is one column until there is room for two, and reads in orde
   // The second track exists only above 1200px. Everything under it is the
   // single column the page was written as.
   assert.match(STYLE, /@media \(min-width:1200px\)\{[\s\S]*?\.wrap\.wide\{max-width:1340px\}/);
-  // The movers sit under the board: both answer "what just happened", and the
-  // calendar and headlines beside them are what is coming and what was said.
-  assert.match(STYLE, /grid-template-areas:"next next" "movers attention" "month headlines"/);
-
-  // Both tracks need minmax(0,…): without it the treemap's intrinsic width
-  // wins the negotiation and shoves the second column off the page.
-  assert.match(STYLE, /grid-template-columns:minmax\(0,1\.5fr\) minmax\(0,1fr\)/);
+  // Both tracks need minmax(0,…): without it the widest child wins the
+  // negotiation and shoves the second column off the page.
+  assert.match(STYLE, /\.dash\{grid-template-columns:minmax\(0,1\.5fr\) minmax\(0,1fr\)/);
 
   const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
   const agenda = renderMonth([], "2026-09", [], {
@@ -705,15 +704,17 @@ test("the dashboard is one column until there is room for two, and reads in orde
     upcoming: [],
     pulse: { from: "2026-09-01", to: "2026-09-30", tag: "", who: "", headlines: [], total: 0, page: 1, pages: 1, offset: 0, topics: [], tickers: [] },
   });
-  // Placement is grid-area, so DOM order stays the reading order: a screen
-  // reader and the tab key get the board, then the filters, then up next,
-  // movers, attention, month, headlines.
+  // Each track is its own column, so DOM order is the reading order at every
+  // width: the filters, then what is coming (up next, the month), then what
+  // is being said (attention, headlines).
   // Matched on the class attribute: the bare names also occur in the <style>.
-  const order = ["lead", "wl", "dash-next", "dash-movers", "dash-attention", "dash-month", "dash-headlines"].map(
-    (c) => agenda.indexOf(`class="${c}"`)
+  const order = ["fbar", "dash-next", "dash-month", "dash-attention", "dash-headlines"].map((c) =>
+    agenda.indexOf(`class="${c}"`)
   );
   assert.deepEqual(order, [...order].sort((a, b) => a - b), "DOM order is the reading order");
   assert.ok(order.every((i) => i > -1), "and every track is present");
+  // The market-wide blocks live on /market now.
+  assert.ok(!/class="board"|id="movers"/.test(agenda), "no board or movers on the agenda");
 });
 
 // ---------------------------------------------------------------- the movers
@@ -903,11 +904,27 @@ test("a calendar day opens beside the grid, and the day page is where its panel 
   assert.match(day, /closest\('#day-panel \.pager a\[href\]'\)/);
 });
 
-test("the board carries its own sector picker, and every link keeps the rest of the page", () => {
+test("the board carries its own sector picker, and it keeps the rest of the page", () => {
   const html = renderBoard(boardFixture(), { w: "BBCA,TLKM", movers: "7d" });
-  assert.match(html, /<span class="mv-tab on" aria-current="true">All sectors<\/span>/);
-  assert.match(html, /href="\/\?w=BBCA%2CTLKM&amp;movers=7d&amp;sector=Financials#board"/);
+  assert.match(html, /<form class="secpick" method="get" action="\/market#board">/);
+  assert.match(html, /<input type="hidden" name="w" value="BBCA,TLKM">/);
+  assert.match(html, /<input type="hidden" name="movers" value="7d">/);
+  assert.match(html, /<option value="" selected>All sectors<\/option>/);
+  assert.match(html, /<option value="Financials">Financials \+0\.4%<\/option>/, "each sector carries its move");
   const picked = renderBoard({ ...boardFixture(), sector: "Financials" }, {});
-  assert.match(picked, /The board · Financials · 3 names by industry/);
-  assert.match(picked, /href="\/#board">All sectors<\/a>/, "and All sectors clears it");
+  assert.match(picked, /Financials · 3 names by industry/);
+  assert.match(picked, /<option value="Financials" selected>/);
+});
+
+test("the market is its own view, and nothing on it takes a page filter", () => {
+  const html = renderMarket(["BBCA"], {
+    mock: false, asOf: null, credits: null, board: boardFixture(), movers: moversFixture(), indexReturns: [],
+    keep: { w: "BBCA" },
+  });
+  assert.match(html, /class="tab" href="\/market\?w=BBCA" aria-current="page"/);
+  assert.match(html, /id="board"/);
+  assert.match(html, /id="movers"/);
+  assert.ok(!/class="fbar"/.test(html), "no filter bar: the board and movers are the whole market");
+  // The period switch stays on this page.
+  assert.match(renderMovers(moversFixture(), [], { w: "BBCA" }), /href="\/market\?w=BBCA&amp;movers=1d#movers"/);
 });

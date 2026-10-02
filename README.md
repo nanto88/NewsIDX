@@ -62,13 +62,13 @@ bookmark it or send it to someone.
 | **Cluster warning** | A heads-up when your month bunches: *"three of your eight names land in the week of 21 Sep"* |
 | **The board (sector heatmap)** | A treemap of the 200 largest IDX names, grouped into the eleven IDX sectors, sized by market cap and coloured by the last session's move. Hover a tile for what was on the record. Opens fullscreen for a second screen |
 | **Biggest movers** | Sectors' top five gainers and losers over a day, a week, a fortnight, a month or a year, each with the headlines that were on the record while it moved. All five periods arrive in one call, so switching between them never costs a credit |
-| **Topic filter** | Multi-select, and every topic by default. Topics are OR, so a second pick shows more rather than less. Counts are computed before the filter applies, so an option never vanishes the moment you use it |
+| **Topic filter** | Checkboxes in a popover, every topic by default. Topics are OR, so a second pick shows more rather than less. Counts are computed before the filter applies, so an option never vanishes the moment you use it |
 | **Google Calendar export** | Any day on the calendar exports as an all-day event carrying that day's agenda. An empty day still exports, so you can park your own reminder |
 | **Price strip picker** | Price the window against IHSG, LQ45, or one company you pick. A subject with no rows renders as a plain grid, never as a fake average |
 | **Watchlist editing in the page** | Add and remove names without touching the URL by hand |
 | **"How we worked this out"** | Every ticker page shows the inputs behind its own numbers, inline |
 | **Light and dark themes** | A toggle in the header. No third-party requests and no webfont, in either theme |
-| **Worth a look** | The month's stories threaded so one press release carried by four outlets is one row, then ranked by pickup against that name's own usual rate |
+| **Needs attention** | The month's stories threaded so one press release carried by four outlets is one row, then ranked by pickup against that name's own usual rate |
 | **Event collision** | Flags a story that lands on top of a date the issuer already published: *"3 sources in 2 days, 7 days before its general meeting"* |
 | **Per-ticker summary and FAQ** | Claude phrases rows already in the database and cites them by position, so a link can only point at a record we own |
 | **Price strip** | IHSG for the whole exchange, or LQ45 for the 45 most liquid names |
@@ -153,7 +153,7 @@ To go live instead, copy `.env.example` to `.env`, put a Sectors key in it, then
 | Command | What it does |
 |---|---|
 | `npm run build` | `tsc -p .` |
-| `npm test` | Builds, then runs 135 tests through `node --test` |
+| `npm test` | Builds, then runs 150 tests through `node --test` |
 | `npm run demo` | Builds the fixture database into `./demo`. No key, no network |
 | `npm run demo:serve` | Serves that database in mock mode |
 | `npm run probes` | Measures the API behaviours the design depends on. About 12 credits |
@@ -302,27 +302,18 @@ fails on a compressed video.
 ### How the Topic filter selects
 
 Nothing picked means every topic. That is the default, and a filter nobody has touched must
-not hide anything. The bar says so rather than leaving you to infer it: with nothing picked it
-carries an **All N tags on record** pill in the product accent, the same affordance the
-companies bar above it uses for **All companies**. A row of grey chips on its own reads as
-"nothing is on" when in fact nothing is being hidden.
+not hide anything, so the button says **All N topics** rather than looking switched off.
 
-So the bar has three states, and they never look alike:
-
-| State | How it reads |
-|---|---|
-| Nothing picked (the default) | The accent-washed **All N tags on record** pill, every chip grey and available |
-| One or more picked | Those chips turn orange with a tick, and a **Clear all** appears. The all-pill goes away |
-| A chip you have not picked | Grey, and clicking it adds it to the selection rather than replacing it |
-
-Orange means the page is showing you less than it has, and it is used for nothing else.
+Topics are checkboxes in a popover on the filter bar, each with its count, taken before the
+filter applies so an option never vanishes the moment you use it. Ticked, the button turns the
+primary wash and names what is on (**Dividend**, or **2 topics**), and a **Clear topics** link
+appears. Checked boxes submit as repeated `tag` params, which the server joins into one
+comma-separated `?tag=`, capped at 12 topics.
 
 Picking several is OR, not AND. Ticking a second topic widens the page, which is what a reader
 means by ticking a second box, and it stops the filter emptying itself on the many pairs that
-never co-occur: one story is rarely both a dividend and a suspension. The selection travels as
-a comma-separated `?tag=`, capped at 12 topics, and each one is matched case-insensitively as
-a substring of the row's own tags, so a picked chip and something typed by hand are one code
-path.
+never co-occur: one story is rarely both a dividend and a suspension. Each topic is matched
+case-insensitively as a substring of the row's own tags.
 
 ### How a window is scored
 
@@ -343,12 +334,12 @@ npm run demo:serve
 
 | Page | URL | What it answers |
 |---|---|---|
-| **Agenda** | `/` | What is coming for *my* names in the next 90 days, plus a board of the whole market |
-| **Month** | `/month` | The market's whole month, and which stories are worth a look |
-| **Day** | `/day?d=2026-09-21` | Everything on the record for one date |
-| **Ticker** | `/ticker?s=BBCA` | One company: its events, its rhythm, its history |
+| **Agenda** | `/` (also `/month`) | What is coming for *my* names, and what is being said about them |
+| **Market** | `/market` | What the whole exchange just did: indices, the board, the movers |
+| **Company** | `/ticker?symbol=BBCA` | One company: its events, its rhythm, its history, a briefing |
+| **Day** | `/day?date=2026-09-21` | Everything on the record for one date |
 
-**The board** sits on the agenda page: the 200 biggest IDX companies as one treemap, grouped by
+**The board** opens the Market view: the 200 biggest IDX companies as one treemap, grouped by
 sector, sized by market cap, coloured by the last session's move. Hover any tile and you get
 what was on the record for that company over the past three days, filings and suspensions
 first, then headlines, each with a date and a source. Most tiles say "nothing on the record",
@@ -359,26 +350,24 @@ There is a fullscreen button if you want it on a second screen.
 list rather than by anything computed here, over any of five periods — a day, a week, a
 fortnight, a month, a year. Under each name are up to three things that were on the record
 while it moved, newest first, with the exchange's own filings and suspensions ahead of press
-coverage. They are shown inline rather than on hover: the treemap hides them because a
-two-percent-wide tile has nowhere to put them, and a list has no such excuse.
+coverage.
 
 Two honest notes on that block. The period switcher is free — every period came back in the
 same call, so changing it is a database read. And **the headlines under a gainer are not the
-reason it gained.** That matters more here than anywhere else on the page, because a headline
-printed under the word "gainer" gets read as the cause unless the page refuses the implication
-out loud. Movers are frequently small companies no outlet covered, so most of them say nothing
-on the record, and the year view admits that our news record does not reach a full year back.
+reason it gained.** The block says so in its own summary line, not only behind its ⓘ, because a
+headline printed under the word "gainer" gets read as the cause unless the page refuses the
+implication out loud.
 
-**Worth a look** sits on `/month`. Stories get threaded, so one press release carried by four
-outlets is one row and not four. Then ranked by how hard it was picked up compared to that
+**Needs attention** sits on the agenda. Stories get threaded, so one press release carried by
+four outlets is one row and not four. Then ranked by how hard it was picked up compared to that
 company's own usual rate, and whether it lands on top of a date the issuer already published.
-We never call anything viral. There are no share counts in this data, and counting distinct
-sources tells you the floor on attention paid, never the reach.
+Each row's **Why** opens the parts its score is made of. We never call anything viral: there are
+no share counts in this data, and counting distinct sources is a floor on attention, never reach.
 
-**The ticker page** carries every event we hold with its official record linked, the fitted
-rhythm and its hit rate, a plain-language summary and FAQ, and an ask box for questions about
-that company. The summary needs `ANTHROPIC_API_KEY`; without one the button is simply
-disabled, and the demo serves a fixture so it works with no key.
+**The company page** carries every event we hold with its official record linked, the fitted
+rhythm and its hit rate, and beside them a generated summary, FAQ and ask box. The summary needs
+`ANTHROPIC_API_KEY`; without one the button is simply disabled, and the demo serves a fixture so
+it works with no key.
 
 **Up next** opens the agenda. It shows four counts: the next event, the next 7 days, the next 30
 days, and ex-dividend dates with the largest expected drop. Dated and predicted are counted
@@ -388,22 +377,36 @@ named rather than left out. With no companies picked it lists the market's dated
 is read-only and cannot spend a credit. A text cell that starts with `=`, `+`, `-` or `@` is
 prefixed with an apostrophe, so a headline cannot run as a formula.
 
-**Accessibility.** Bullish and bearish headlines carry a ▲ or ▼ beside the colour, which a
-screen reader announces as "Bullish" or "Bearish", so tone never depends on colour alone. In
-the light theme, text colours clear WCAG AA's 4.5:1 contrast. Summaries, calendar-export links
-and ticker links in the Up next table have a hit area at least 24px high (WCAG 2.2 target size).
+**Colour has one role per hue.** Green and red are a price move and nothing else. Sectors'
+Bullish / Bearish tag is a ▲ or ▼ in its own pair of colours (`--bull`, `--bear`) beside a
+headline that stays body text: a tag on coverage is not a price move and must not look like one.
+Amber (`--alert`) means soon: under a week to go, or the top-ranked story. An active filter wears
+the primary wash. The glyphs carry "Bullish" / "Bearish" for a screen reader, so tone never
+depends on colour alone. In the light theme, text clears WCAG AA's 4.5:1.
 
-**The layout.** The board opens the agenda, straight under the header and **above the
-filters**. It is the whole market, and it takes neither the company filter nor the topic
-filter. A block drawn under a filter it ignores looks broken, so it sits above them. On a wide
-screen its height is capped at 540px, so the filters and Up next still start on the first
-screen.
+**Type.** Sans for words, mono only where digits must line up: dates, tickers, prices,
+percentages. Section headings are 16px sans in body colour; nothing on the page is under 11px.
 
-Below 1200px the rest of the agenda is one column, in the order it reads. Above it the shell
-widens to 1340px. Up next spans the full width, then two tracks: the movers beside what needs
-attention, the month grid beside the headlines. Placement is grid-area on top of the original
-DOM order, so a screen reader and the tab key get the board, the filters, then up next,
-movers, attention, month and headlines, whatever the width.
+**The layout.** Three views in a segmented control in the header, beside **About** and the
+theme toggle. Under the header, one **filter bar**: the same GET form on every page that has
+anything to filter — companies (pills plus an add box), topics (a popover of checkboxes),
+**Apply**, and a **Clear filters** that exists only while something is narrowed. The company
+page swaps the companies field for a one-company picker. Market has no bar at all: the board and
+the movers are the whole exchange and take no filter, and each carries its own control (a
+sector select, a period switch) on the block itself.
+
+Above 1200px the agenda is two tracks with one job each: **what is coming** on the left (Up
+next, then the month), **what is being said** on the right (Needs attention, then the
+headlines). Each track is its own column, so a long list on one side never opens a gap on the
+other, and DOM order — left track, then right — is the reading order at every width, for a
+screen reader and the tab key too. Below 1200px it is one column in that order. The company page
+is the same two tracks: the record on the left, the generated briefing beside it.
+
+**Explanations are one click away, not in front.** Every block's method lives behind an **i**
+beside its heading, and the key to Fact / Scheduled / Predicted lives in the **About** drawer.
+Both are the native `popover`: no script, Escape and click-outside close them, and a browser
+without popover support renders the text inline. The short shape key stays visible under every
+list, because provenance is the product.
 
 **A date in the calendar opens beside it.** Clicking a day swaps the headlines column for that
 day's scheduled events and facts, with **Close · back to the month** to restore it and a link
@@ -412,11 +415,11 @@ browser with scripts off all open `/day` as before. The panel is lifted from the
 itself, so a day has one renderer. On a priced grid the date number takes the close's
 direction, green up and red down, like the close under it.
 
-**The board filters by sector.** A row of sector chips sits inside the board, each showing
+**The board filters by sector.** A sector select on the board's heading, each option carrying
 that sector's cap-weighted move. Picking one redraws the treemap with only that sector, boxed
-by industry (sub-sector), so its names get room to read. **All sectors** clears it. The chips
-are links (`?sector=Financials#board`) that keep the rest of the page, and the page's other
-controls keep the sector in turn. A `?sector=` naming no sector on the board is ignored.
+by industry (sub-sector), so its names get room to read. It is a GET form
+(`/market?sector=Financials#board`) that keeps the rest of the page, and with scripts on it
+submits on change. A `?sector=` naming no sector on the board is ignored.
 
 **Index strip.** Over the board, IHSG and LQ45 each show their last close and the move over
 **1D / 1W / 1M / 1Y**: against the previous session, a week, a calendar month and a calendar
@@ -433,13 +436,12 @@ opens the full page.
 
 **Mover notes are one line each.** The headline links to its source (only when the source is
 an http(s) page), followed by the date and the outlet's domain. "News" is not repeated on every
-row, but a filing or a suspension is named, because that is the one worth flagging. A day and a company page stay a 780px reading column, because prose set
-1300px wide is harder to read, not easier.
+row, but a filing or a suspension is named, because that is the one worth flagging. A day page
+stays a 780px reading column, because a single list set 1300px wide is harder to read.
 
-**On every page**: a multi-select topic filter that defaults to every topic, a
-price strip you can point at IHSG, LQ45 or a single company, a watchlist you can edit in place,
-a light and dark theme toggle, and a Google Calendar export on each day cell that carries that
-day's agenda as an all-day event.
+**On every page**: a light and dark theme toggle, and the About drawer. On the agenda: the
+filter bar, a price strip you can point at IHSG, LQ45 or one selected company, and a Google
+Calendar export on each day cell that carries that day's agenda as an all-day event.
 
 Nothing in the served UI can spend a credit, except the bounded on-demand fill for a symbol
 nobody has fetched before (`FILL_ON_DEMAND`, always on in mock mode).
@@ -452,7 +454,7 @@ nobody has fetched before (`FILL_ON_DEMAND`, always on in mock mode).
 npm test
 ```
 
-135 tests through `node --test`, covering the fit, the falsifier, the walk-forward scoring, the
+150 tests through `node --test`, covering the fit, the falsifier, the walk-forward scoring, the
 bucketing, the idempotent upsert, HTML escaping, the treemap geometry, and one assertion that
 fails if a single design-system hex value drifts.
 
@@ -505,7 +507,7 @@ NewsIDX/
 │   ├── server.ts ........... the routes: agenda, month, day, ticker, two FAQ endpoints
 │   ├── config.ts ........... env, paths, the credit ceiling, the design tokens
 │   ├── cache.ts, dates.ts, stats.ts
-│   ├── *.test.ts ........... 135 tests
+│   ├── *.test.ts ........... 150 tests
 │   └── mock/fixtures.ts .... made-up data in the API's own response shapes
 ├── scripts/
 │   ├── backfill-run.ts ..... the backfill entry point

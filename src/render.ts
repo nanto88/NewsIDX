@@ -114,19 +114,26 @@ export const STYLE = `
     }
   }
 
-  /* Ours, not the design system's: the colour a filter turns when it is ON.
-     The primary is the product's own accent and is already everywhere --
-     brand dot, tabs, scheduled chips -- so an active filter painted in it
-     reads as chrome. Orange belongs to nothing else here, which is the whole
-     job: at a glance you can see the page is showing you less than it has. */
+  /* Ours, not the design system's: colour ROLES. Each hue means one thing.
+       --primary   interactive and "the issuer dated it" (the design system's)
+       --up/--down a price moved. Nothing else is ever green or red.
+       --bull/--bear the provider's sentiment tag. A glyph colour only -- the
+                   headline itself stays body text, because a tag on coverage
+                   is not a price move and must not look like one.
+       --alert     needs you soon: under a week to go, the top-ranked story.
+     An active filter wears --primary filled: the bar is the one place it
+     lives, so it needs no hue of its own. */
   :root{
-    --on:#ff9f43;
-    --on-wash: color-mix(in srgb, var(--on) 16%, transparent);
+    --bull:#8ea2ff; --bear:#e58ad9; --alert:#f5a524;
+    --alert-wash: color-mix(in srgb, var(--alert) 14%, transparent);
   }
-  :root[data-theme="light"]{ --on:#b8560c; }
-  @media (prefers-color-scheme: light){ :root:not([data-theme="dark"]){ --on:#b8560c; } }
+  :root[data-theme="light"]{ --bull:#3b56c4; --bear:#a3368f; --alert:#8f5300; }
+  @media (prefers-color-scheme: light){ :root:not([data-theme="dark"]){ --bull:#3b56c4; --bear:#a3368f; --alert:#8f5300; } }
 
   *{box-sizing:border-box}
+  /* Type scale: 12 meta · 13 dense rows · 14 body · 16 section · 22 page.
+     Sans for words, mono only where digits must line up: dates, tickers,
+     prices, percentages, counts. Nothing on the page is set under 11px. */
   body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-ui);
        font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased}
   h1,h2,h3{margin:0;text-wrap:balance}
@@ -151,90 +158,125 @@ export const STYLE = `
      instead of just the treemap. Declared in the base rule, not the two-track
      one: the single column is where it actually bites. */
   .dash > section{min-width:0}
-  /* The board, over the filters. A rule under it says the filters below
-     start there. */
-  .lead{padding-bottom:6px;border-bottom:1px solid var(--border);min-width:0}
-  /* Full width at 16:9 is a whole screen of treemap, and the filters and Up
-     next fall below the fold. Capped, and never under the 400px the sector
-     headings are sized against (BOARD_MIN_H_PX). The phone keeps its own
-     panned 760px board. */
-  @media (min-width:761px){ .lead .board{aspect-ratio:auto;height:clamp(400px,38vw,540px)} }
+  /* Full width at 16:9 is a whole screen of treemap. Capped, and never under
+     the 400px the sector headings are sized against (BOARD_MIN_H_PX). The
+     phone keeps its own panned 760px board. */
+  @media (min-width:761px){ .board{aspect-ratio:auto;height:clamp(400px,38vw,560px)} }
+  /* Two tracks with one job each: the left is what is COMING (up next, the
+     month), the right is what is being SAID (ranked stories, headlines).
+     Each track is its own column, so a long list on one side never opens a
+     gap on the other, and the DOM order -- left track, then right -- is the
+     reading order at every width, for a screen reader and the tab key too. */
+  .dash-col{min-width:0}
   @media (min-width:1200px){
     .wrap.wide{max-width:1340px}
-    .dash{
-      grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);
-      grid-template-areas:"next next" "movers attention" "month headlines";
-      column-gap:28px;
-      align-items:start;
-    }
-    /* minmax(0,…) on both tracks: without it the treemap's own width wins the
-       negotiation and pushes the second column off the page. */
-    .dash-next{grid-area:next}
-    .dash-movers{grid-area:movers;min-width:0}
-    .dash-attention{grid-area:attention;min-width:0}
-    .dash-month{grid-area:month;min-width:0}
-    .dash-headlines{grid-area:headlines;min-width:0}
-    /* The first thing in a column supplies its own top margin; a second
-       track would otherwise start lower than the first for no reason. */
-    .dash-attention > .kicker:first-child,
-    .dash-headlines > .kicker:first-child{margin-top:0}
+    .dash{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);column-gap:32px;align-items:start}
   }
+  /* The first heading in a track supplies no top margin, so both tracks
+     start level. */
+  .dash-col > .sh:first-child,.dash-col > section:first-child > .sh:first-child{margin-top:20px}
 
   /* ---------------- chrome ---------------- */
-  .mock{background:var(--primary-wash);border-bottom:1px solid var(--border);
-        font-family:var(--font-mono);font-size:11px;letter-spacing:.04em;
-        color:var(--primary-dark);padding:7px 16px;text-align:center}
-  .top{display:flex;align-items:center;gap:12px;padding:18px 0 14px;border-bottom:1px solid var(--border)}
-  .brand{font-size:17px;font-weight:700;letter-spacing:-.015em;display:flex;align-items:baseline;gap:9px}
-  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--primary);box-shadow:0 0 10px var(--primary-wash)}
-  .brand small{font-family:var(--font-mono);font-size:10.5px;font-weight:500;letter-spacing:.08em;
-               text-transform:uppercase;color:var(--text-faint)}
+  .mock{background:var(--alert-wash);border-bottom:1px solid var(--border);
+        font-size:12px;color:var(--text);padding:6px 16px;text-align:center}
+  .mock b{color:var(--alert)}
+  /* One bar: brand, the three views, About, theme. Navigation used to be a
+     second row under the filters, so the page opened on three rows of chrome. */
+  .top{display:flex;align-items:center;gap:6px 16px;flex-wrap:wrap;padding:14px 0 12px;
+       border-bottom:1px solid var(--border)}
+  .brand{font-size:16px;font-weight:700;letter-spacing:-.015em;display:flex;align-items:center;gap:8px;text-decoration:none}
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--primary)}
   .top .sp{flex:1}
   button.ghost{background:var(--surface);color:var(--text-muted);border:1px solid var(--border);
-               border-radius:8px;padding:7px 11px;font-size:12px;font-family:inherit;cursor:pointer;min-height:34px}
+               border-radius:8px;padding:6px 11px;font-size:13px;font-family:inherit;cursor:pointer;min-height:34px}
   button.ghost:hover{color:var(--text);border-color:var(--border-strong)}
 
-  /* tabs = the two routes worth a tab; a single day is a drill-down */
-  .tabs{display:flex;gap:4px;overflow-x:auto;padding:12px 0 0;scrollbar-width:none}
+  /* The three views, as a segmented control. A single day is a drill-down. */
+  .tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;background:var(--surface);
+        border:1px solid var(--border);border-radius:9px;padding:2px}
   .tabs::-webkit-scrollbar{display:none}
-  .tab{background:none;border:0;border-bottom:2px solid transparent;color:var(--text-muted);
-       font-family:var(--font-mono);font-size:12px;padding:8px 11px;cursor:pointer;white-space:nowrap;min-height:44px}
+  .tab{color:var(--text-muted);font-size:13px;font-weight:500;padding:5px 12px;border-radius:7px;
+       white-space:nowrap;min-height:30px}
   .tab:hover{color:var(--text)}
-  .tab[aria-selected="true"]{color:var(--primary);border-bottom-color:var(--primary)}
+  .tab[aria-selected="true"]{color:var(--text);background:var(--surface-3)}
+  @media (max-width:640px){ .top .tabs{order:3;flex-basis:100%} .tab{flex:1;justify-content:center} }
 
   /* ---------------- shared pieces ---------------- */
-  .kicker{font-family:var(--font-mono);font-size:10.5px;font-weight:600;letter-spacing:.09em;
-          text-transform:uppercase;color:var(--text-faint);margin:26px 0 10px}
-  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px}
+  /* A section heading: sans, body colour, one size up. The old one was 10.5px
+     mono capitals in the faintest grey, which is why ten sections all read
+     as equally (un)important. */
+  .kicker,.sh h2{font-size:16px;font-weight:600;letter-spacing:-.01em;color:var(--text);margin:32px 0 12px}
+  .sh{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;margin:32px 0 12px}
+  .sh h2{margin:0}
+  .sh .sub{font-family:var(--font-mono);font-size:12px;color:var(--text-muted)}
+  .sh .end{margin-left:auto;display:flex;gap:10px;align-items:center}
   .muted{color:var(--text-muted)}
-  .faint{color:var(--text-faint)}
+  .faint{color:var(--text-muted)}
 
-  .wl{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 0 0}
-  .wl-label{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint)}
-  .wl form{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .wl-picked{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .wl-count{font-size:11px;color:var(--text-faint);margin-left:auto;white-space:nowrap}
-  .wl-warn{flex-basis:100%;margin:2px 0 0;font-size:12px;color:var(--down)}
-  .wl-warn b{font-family:var(--font-mono);font-weight:600}
+  /* ---------------- the filter bar ----------------
+     One pattern on every page: a single GET form, fields left to right,
+     Apply, and a Clear that only exists while something is narrowed. The
+     topics live in a popover of checkboxes instead of a row of 14 chips. */
+  .fbar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;padding:12px 0;
+        border-bottom:1px solid var(--border)}
+  .f-field{display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0}
+  .f-lab{font-size:12px;font-weight:600;color:var(--text-muted)}
+  .fbar .pill{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);text-decoration:none;
+              border:1px solid var(--border);border-radius:999px;padding:3px 10px;min-height:28px;
+              display:inline-flex;align-items:center;gap:5px}
+  .fbar a.pill:hover{border-color:var(--border-strong);color:var(--text)}
+  .fbar .pill.on{background:var(--primary-wash);border-color:color-mix(in srgb,var(--primary) 40%,transparent);color:var(--text)}
+  .fbar .pill.all{color:var(--text-muted)}
+  .fbar input[type=text],.fbar select{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);color:var(--text);
+         border:1px solid var(--border);border-radius:8px;padding:5px 10px;min-height:32px}
+  .fbar input[type=text]{width:150px}
+  .fbar input::placeholder{color:var(--text-muted)}
+  .fbar input:focus-visible,.fbar select:focus-visible{border-color:var(--primary)}
+  .f-drop{font-family:var(--font-ui);font-size:13px;background:var(--surface-2);color:var(--text);
+          border:1px solid var(--border);border-radius:8px;padding:5px 10px;min-height:32px;cursor:pointer}
+  .f-drop::after{content:" ▾";color:var(--text-muted)}
+  .f-drop.on{background:var(--primary-wash);border-color:color-mix(in srgb,var(--primary) 40%,transparent)}
+  .f-apply{font-family:var(--font-ui);font-size:13px;font-weight:600;background:var(--primary-wash);color:var(--text);
+           border:1px solid color-mix(in srgb,var(--primary) 40%,transparent);border-radius:8px;padding:5px 14px;
+           min-height:32px;cursor:pointer}
+  .f-apply:hover{border-color:var(--primary)}
+  .f-clear{font-size:13px;color:var(--primary-dark);text-decoration:none;padding:6px 0}
+  .f-clear:hover{text-decoration:underline}
+  .f-count{font-size:12px;color:var(--text-muted);margin-left:auto;white-space:nowrap}
+  .f-warn{flex-basis:100%;margin:0;font-size:12px;color:var(--alert)}
+  .f-warn b{font-family:var(--font-mono);font-weight:600}
+  .f-pop .opts{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:2px 12px;margin:10px 0 14px}
+  .f-pop label{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0;cursor:pointer}
+  .f-pop label .n{margin-left:auto;font-family:var(--font-mono);font-size:12px;color:var(--text-muted)}
+  .f-pop input[type=checkbox]{accent-color:var(--primary);width:15px;height:15px;margin:0}
+  .f-pop .acts{display:flex;gap:12px;align-items:center}
+  @media (max-width:640px){ .f-count{margin-left:0;flex-basis:100%} .fbar input[type=text]{flex:1 1 120px} }
 
-  /* Methodology lives one click away: present, never in front of the answer. */
-  details.why{margin-top:6px}
-  details.why > summary{font-family:var(--font-mono);font-size:11px;color:var(--text-faint);
-                        cursor:pointer;list-style:none;width:fit-content;
-                        border-bottom:1px dashed var(--border-strong);padding:5px 0 2px}
-  details.why > summary::-webkit-details-marker{display:none}
-  details.why > summary::before{content:"▸ ";display:inline-block;transition:transform .12s var(--ease)}
-  details.why[open] > summary::before{content:"▾ "}
-  details.why > summary:hover{color:var(--text-muted)}
-  details.why[open] > summary{margin-bottom:5px}
-  details.why > :not(summary){font-size:12px;color:var(--text-muted);line-height:1.5}
-  details.why.block{margin-top:22px}
-  details.why.block > summary{font-size:12px}
-  .wl .pill{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);
-            border:1px solid var(--border);border-radius:999px;padding:4px 10px}
-  .wl .pill.add{color:var(--text-faint);border-style:dashed;text-decoration:none}
-  .wl .pill.all{color:var(--primary-dark);border-color:color-mix(in srgb,var(--primary) 32%,transparent);
-                background:var(--primary-wash)}
+  /* ---------------- disclosure: popovers ----------------
+     Every explanation the page used to print inline lives behind an ⓘ next
+     to the heading it explains, and the key to the shapes behind About. The
+     native popover: no script, Escape and light-dismiss for free, and in a
+     browser without it the text simply renders inline. */
+  .info{width:22px;height:22px;border-radius:50%;border:1px solid var(--border-strong);background:none;
+        color:var(--text-muted);font:600 12px/1 var(--font-ui);cursor:pointer;padding:0;flex:none}
+  .info:hover{color:var(--text);border-color:var(--text-muted)}
+  [popover].pop-card{margin:auto;width:min(560px,calc(100vw - 32px));max-height:min(80vh,720px);overflow:auto;
+        background:var(--surface);color:var(--text);border:1px solid var(--border-strong);border-radius:14px;
+        padding:18px 20px;box-shadow:var(--shadow)}
+  [popover].pop-card::backdrop{background:rgba(0,0,0,.45)}
+  [popover].pop-card h3{font-size:16px;font-weight:600;margin:0 0 8px}
+  [popover].pop-card h4{font-size:13px;font-weight:600;margin:14px 0 4px}
+  [popover].pop-card p{font-size:13px;line-height:1.6;color:var(--text-muted);margin:0 0 10px}
+  [popover].pop-card p b{color:var(--text)}
+  [popover].pop-card .x{float:right;margin:-4px -6px 0 8px}
+  /* About opens as a drawer from the right, because it is reference you keep
+     beside the page rather than a question the page is asking you. */
+  [popover].pop-card.drawer{margin:0 0 0 auto;height:100vh;max-height:none;border-radius:14px 0 0 14px}
+  .key{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:12px;font-size:12px;color:var(--text-muted)}
+  .key span{display:inline-flex;align-items:center;gap:6px}
+  .key.full{flex-direction:column;gap:10px;font-size:13px}
+  .key.full span{align-items:flex-start}
+  .key.full .sw{flex:none;margin-top:3px}
 
   /* ---------------- chips: three classes, three shapes (plan.md §2) ---------------- */
   .rows{display:flex;flex-direction:column;gap:7px}
@@ -243,18 +285,18 @@ export const STYLE = `
   .chip .when{font-family:var(--font-mono);font-size:12px;color:var(--text-muted)}
   .chip .tick{font-size:12.5px;font-weight:600}
   .chip .what{font-size:13px}
-  .chip .kind{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
-              color:var(--text-faint);display:block;margin-bottom:3px}
+  .chip .kind{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+              color:var(--text-muted);display:block;margin-bottom:3px}
   .chip.sched{box-shadow:inset 2px 0 0 var(--primary)}
   .chip.sched .kind{color:var(--primary-dark)}
-  .chip.fact .kind{color:var(--text-faint)}
+  .chip.fact .kind{color:var(--text-muted)}
   /* Predicted: no fill and a dashed edge. A shape, not a colour -- colour
      alone fails colour-blind readers and fails a compressed video. */
   .chip.pred{background:none;border-style:dashed}
   .chip.pred .when,.chip.pred .kind,.chip.pred .what{color:var(--text-muted)}
   .chip.pred .when{font-weight:600}
   details.how{margin-top:5px}
-  details.how summary{font-size:11px;color:var(--text-faint);cursor:pointer;list-style:none;
+  details.how summary{font-size:11px;color:var(--text-muted);cursor:pointer;list-style:none;
                       min-height:24px;display:flex;align-items:center}
   details.how summary::-webkit-details-marker{display:none}
   details.how summary::before{content:"▸ ";font-size:9px}
@@ -265,8 +307,6 @@ export const STYLE = `
   .src{font-family:var(--font-mono);font-size:11px;color:var(--primary-dark);
        border-bottom:1px dashed color-mix(in srgb,var(--primary) 40%,transparent);cursor:default}
 
-  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-top:22px;padding-top:14px;border-top:1px solid var(--border)}
-  .legend span{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--text-muted)}
   .sw{width:22px;height:13px;border-radius:4px;border:1px solid var(--border);background:var(--surface-2)}
   .sw.s{box-shadow:inset 2px 0 0 var(--primary)}
   .sw.p{background:none;border-style:dashed}
@@ -285,10 +325,10 @@ export const STYLE = `
   .dayhead .acts{display:flex;gap:8px;align-items:center}
   .dayhead .acts a{font-family:var(--font-mono);font-size:11px;color:var(--primary-dark);text-decoration:none;padding:5px 0}
   .dayhead .acts a:hover{text-decoration:underline}
-  .cellwrap > a.picked > .cell{box-shadow:0 0 0 2px var(--on);border-color:var(--on)}
+  .cellwrap > a.picked > .cell{box-shadow:0 0 0 2px var(--primary);border-color:var(--primary)}
   .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 13px;min-width:0}
-  .kpi .k{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-faint)}
+  .kpi .k{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-muted)}
   .kpi .v{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-size:22px;font-weight:600;
           letter-spacing:-.02em;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .kpi .v small{font-size:12px;font-weight:500;color:var(--text-muted);letter-spacing:0}
@@ -299,21 +339,21 @@ export const STYLE = `
      honesty rule in text, so it scrolls rather than being hidden. */
   .nx-scroll{margin-top:10px;overflow-x:auto;background:var(--surface);border:1px solid var(--border);border-radius:10px}
   .nx{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
-  .nx th{font-family:var(--font-mono);font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
-         color:var(--text-faint);text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .nx th{font-family:var(--font-mono);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+         color:var(--text-muted);text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--surface-2)}
   .nx td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:baseline}
   .nx tr:last-child td{border-bottom:0}
   .nx tbody tr:hover td{background:var(--surface-2)}
   .nx .r{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
   .nx .when{font-family:var(--font-mono);font-size:12px;white-space:nowrap}
-  .nx .soon{color:var(--on);font-weight:600}
+  .nx .soon{color:var(--alert);font-weight:600}
   /* The certainty column carries the chip's shape, so the three classes read
      the same here as everywhere else on the page. */
   .nx .cert{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-muted);white-space:nowrap}
   .nx tr.pred td{color:var(--text-muted)}
-  .nx .sw{width:16px;height:10px;border-color:var(--text-faint)}
+  .nx .sw{width:16px;height:10px;border-color:var(--text-muted)}
   .nx .tickerlink{display:inline-block;padding:5px 0}
-  .nx .more td{font-size:12px;color:var(--text-faint);text-align:center;white-space:normal}
+  .nx .more td{font-size:12px;color:var(--text-muted);text-align:center;white-space:normal}
   .nx td{white-space:nowrap}
   @media (max-width:880px){
     .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
@@ -327,19 +367,19 @@ export const STYLE = `
   .mtitle{font-size:16px;font-family:var(--font-mono);font-weight:600;margin-top:20px}
 
   /* --- which company's closes colour the grid */
-  .pricefilter{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;
+  .pricefilter{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
                scroll-margin-top:14px}
-  .pricefilter label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.07em;
-                     text-transform:uppercase;color:var(--text-faint)}
+  .pricefilter label{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.07em;
+                     text-transform:uppercase;color:var(--text-muted)}
   .pricefilter select{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);color:var(--text);
                       border:1px solid var(--border);border-radius:999px;padding:6px 11px;min-height:34px}
   .pricefilter select:focus-visible{border-color:var(--primary)}
   .pricefilter button{font-family:var(--font-mono);font-size:12px;background:var(--surface);color:var(--text-muted);
                       border:1px solid var(--border);border-radius:999px;padding:6px 12px;cursor:pointer;min-height:34px}
   .pricefilter button:hover{color:var(--text);border-color:var(--border-strong)}
-  .pricefilter .hint{font-size:11.5px;color:var(--text-faint)}
+  .pricefilter .hint{font-size:11.5px;color:var(--text-muted)}
   .dow{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;margin:14px 0 5px}
-  .dow span{font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;color:var(--text-faint);text-align:center}
+  .dow span{font-family:var(--font-mono);font-size:11px;letter-spacing:.08em;color:var(--text-muted);text-align:center}
   .grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px}
   .cell{background:var(--surface);border:1px solid var(--border);border-radius:8px;
         min-height:88px;padding:6px;display:flex;flex-direction:column;gap:4px}
@@ -348,19 +388,17 @@ export const STYLE = `
   .cell.out{opacity:.38}
   .cell.today{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary-wash)}
   .cell.today .d{color:var(--primary);font-weight:600}
-  .mini{font-family:var(--font-mono);font-size:9.5px;line-height:1.35;padding:2px 4px;border-radius:4px;
+  .mini{font-family:var(--font-mono);font-size:11px;line-height:1.35;padding:2px 4px;border-radius:4px;
         background:var(--surface-2);border:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .mini.s{box-shadow:inset 2px 0 0 var(--primary)}
-  .more{font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);padding-left:3px}
+  .more{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);padding-left:3px}
   .dots{display:none;gap:3px}
   .dots i{width:5px;height:5px;border-radius:50%;background:var(--text-muted)}
   .dots i.s{background:var(--primary)}
-  @media (max-width:880px){ .summary{grid-template-columns:repeat(2,1fr)} }
   @media (max-width:640px){
     .cell{min-height:52px;align-items:flex-start}
     .mini,.more{display:none}
     .dots{display:flex}
-    .summary{grid-template-columns:1fr}
     .chip{grid-template-columns:1fr;gap:2px}
     .chip .when{order:-1}
   }
@@ -370,35 +408,19 @@ export const STYLE = `
   table{width:100%;border-collapse:collapse;font-size:12.5px}
   .tw{overflow-x:auto;margin-top:10px;border:1px solid var(--border);border-radius:10px}
   th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
-  th{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;
-     color:var(--text-faint);font-weight:600;background:var(--surface-2)}
+  th{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.07em;text-transform:uppercase;
+     color:var(--text-muted);font-weight:600;background:var(--surface-2)}
   tbody tr:last-child td{border-bottom:0}
 
   .empty{border:1px dashed var(--border-strong);border-radius:10px;padding:14px;color:var(--text-muted);font-size:13px}
   footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--border);
-         font-family:var(--font-mono);font-size:11px;color:var(--text-faint);
+         font-family:var(--font-mono);font-size:11px;color:var(--text-muted);
          display:flex;flex-wrap:wrap;gap:6px 16px}
   [hidden]{display:none !important}
+  .js .autobtn{display:none}
   .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
       clip:rect(0 0 0 0);white-space:nowrap;border:0}
 
-  /* --- added for the served app: the watchlist is an input, not a static pill row */
-  .wl form{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-  /* One company at a time, so the field is short and the dropdown works. */
-  .wl input{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);color:var(--text);
-            border:1px solid var(--border);border-radius:999px;padding:6px 12px;
-            width:190px;min-width:120px;flex:0 1 190px;min-height:34px}
-  .wl input:focus-visible{border-color:var(--primary)}
-  @media (max-width:640px){
-    .wl-count{margin-left:0}
-    .wl input{flex:1 1 140px;width:auto}
-  }
-  .wl input::placeholder{color:var(--text-faint)}
-  .wl button{font-family:var(--font-mono);font-size:12px;background:var(--surface);color:var(--text-muted);
-             border:1px solid var(--border);border-radius:999px;padding:6px 12px;cursor:pointer;min-height:34px}
-  .wl button:hover{color:var(--text);border-color:var(--border-strong)}
-  a.pill{text-decoration:none}
-  a.pill:hover{border-color:var(--border-strong);color:var(--text)}
   a.src{cursor:pointer}
   a.src:hover{color:var(--primary)}
   .tab{text-decoration:none;display:inline-flex;align-items:center;gap:6px}
@@ -406,15 +428,6 @@ export const STYLE = `
   .cellwrap:hover .cell{border-color:var(--border-strong)}
   .tickerlink{font-family:var(--font-mono);font-size:11px;color:var(--primary-dark);text-decoration:none}
   .tickerlink:hover{text-decoration:underline}
-
-  /* --- ticker filter, shared by /month, /day and /ticker */
-  .tf{display:flex;gap:6px;align-items:center;margin-left:auto}
-  .tf select{font-family:var(--font-mono);font-size:12px;background:var(--surface);color:var(--text);
-             border:1px solid var(--border);border-radius:8px;padding:6px 9px;min-height:34px}
-  .tf button{font-family:var(--font-mono);font-size:12px;background:var(--surface);color:var(--text-muted);
-             border:1px solid var(--border);border-radius:8px;padding:6px 10px;cursor:pointer;min-height:34px}
-  .tf button:hover{color:var(--text);border-color:var(--border-strong)}
-  .tf label{font-family:var(--font-mono);font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint)}
 
   /* --- hover card on a calendar cell. Touch devices have no hover, so the
          whole cell is a link to /day and the card is suppressed below 640px. */
@@ -443,12 +456,12 @@ export const STYLE = `
           color:var(--text-muted);margin-bottom:6px}
   .pop ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
   .pop li{font-size:11.5px;line-height:1.35;display:flex;gap:6px;align-items:baseline}
-  .pop li .k{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.06em;text-transform:uppercase;
-             color:var(--text-faint);flex:0 0 auto}
+  .pop li .k{font-family:var(--font-mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;
+             color:var(--text-muted);flex:0 0 auto}
   .pop li.s .k{color:var(--primary-dark)}
   .pop li.p{color:var(--text-muted)}
-  .pop .more{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);margin-top:6px}
-  .pop .gcal{display:inline-block;margin-top:4px;padding:6px 0;font-family:var(--font-mono);font-size:10px;
+  .pop .more{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);margin-top:6px}
+  .pop .gcal{display:inline-block;margin-top:4px;padding:6px 0;font-family:var(--font-mono);font-size:11px;
              letter-spacing:.05em;color:var(--primary-dark);text-decoration:none}
   .pop .gcal:hover{text-decoration:underline}
   @media (max-width:640px){ .pop{display:none} }
@@ -459,10 +472,14 @@ export const STYLE = `
          nothing else to badge. */
   .pos{color:var(--up)}
   .neg{color:var(--down)}
-  .tone::before{font-size:.8em;text-decoration:none;display:inline-block;margin-right:.3em}
-  .tone.pos::before{content:"▲";content:"▲" / "Bullish:"}
-  .tone.neg::before{content:"▼";content:"▼" / "Bearish:"}
-  .sent{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase}
+  /* A sentiment tag is not a price move, so the headline keeps the body
+     colour and only the glyph takes the sentiment role. */
+  .tone.pos,.tone.neg{color:inherit}
+  .tone::before{font-size:.8em;text-decoration:none;display:inline-block;margin-right:.35em}
+  .tone.pos::before{content:"▲";content:"▲" / "Bullish:";color:var(--bull)}
+  .tone.neg::before{content:"▼";content:"▼" / "Bearish:";color:var(--bear)}
+  .bull{color:var(--bull)} .bear{color:var(--bear)}
+  .sent{font-family:var(--font-mono);font-size:11px;letter-spacing:.07em;text-transform:uppercase}
 
   /* --- steppers: one treatment for every prev/next in the product, whether it
          moves through a list, a month or a day. Each side says where it goes,
@@ -471,16 +488,16 @@ export const STYLE = `
          font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted)}
   .pager .mid{flex:1;text-align:center;line-height:1.35}
   .pager .mid b{color:var(--text);font-weight:600}
-  .pager .of{display:block;font-size:10.5px;color:var(--text-faint)}
+  .pager .of{display:block;font-size:11.5px;color:var(--text-muted)}
   .pg{display:inline-flex;align-items:center;gap:7px;text-decoration:none;
       font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);
       background:var(--surface);border:1px solid var(--border);border-radius:9px;
       padding:7px 12px;min-height:36px;transition:border-color .12s var(--ease),color .12s var(--ease)}
   .pg:hover{color:var(--text);border-color:var(--border-strong);background:var(--surface-2)}
-  .pg .ar{color:var(--text-faint);font-size:13px;line-height:1}
+  .pg .ar{color:var(--text-muted);font-size:13px;line-height:1}
   .pg:hover .ar{color:var(--primary)}
   .pg .lb{display:flex;flex-direction:column;line-height:1.2}
-  .pg .lb small{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--text-faint)}
+  .pg .lb small{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--text-muted)}
   .pg[aria-disabled="true"]{opacity:.38;pointer-events:none;background:transparent}
   .pg.next{margin-left:auto;text-align:right}
   .pg.next .lb{align-items:flex-end}
@@ -497,7 +514,7 @@ export const STYLE = `
   .px{display:flex;align-items:baseline;justify-content:space-between;gap:4px;margin-top:auto;
       font-family:var(--font-mono);font-size:11px;color:var(--text-muted)}
   .px .c{font-weight:600;color:var(--text)}
-  .px .d{font-size:10px}
+  .px .d{font-size:11px}
   .cell.up1{background:color-mix(in srgb,var(--up) 7%,var(--surface))}
   .cell.up2{background:color-mix(in srgb,var(--up) 15%,var(--surface))}
   .cell.up3{background:color-mix(in srgb,var(--up) 26%,var(--surface))}
@@ -521,76 +538,38 @@ export const STYLE = `
   .cell.up1 > .d,.cell.up2 > .d,.cell.up3 > .d{color:var(--up)}
   .cell.dn1 > .d,.cell.dn2 > .d,.cell.dn3 > .d{color:var(--down)}
 
-  /* --- the topic filter, a full-width bar under the companies bar. Both are
-         data filters and they read as one stack; the view tabs below them are
-         navigation, which is a different kind of control. */
-  .tb{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 0 0;
-      border-top:1px solid var(--border);margin-top:10px}
-  .tb-label{font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;
-            color:var(--text-faint)}
-  .tb-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;flex:1 1 100%}
-  .tb .tag{font-family:var(--font-mono);font-size:11px;background:var(--surface-2);
-           border:1px solid var(--border);border-radius:999px;padding:3px 9px;color:var(--text-muted);
-           text-decoration:none}
-  .tb .tag b{color:var(--text);font-weight:600}
-  .tb .tag.hot{border-color:color-mix(in srgb,var(--primary) 35%,transparent);color:var(--primary-dark)}
-  /* "Everything is showing" is a state, not a button: same treatment as the
-     companies bar's All companies pill, and deliberately not the orange that
-     means a filter is narrowing the page. */
-  .tb .tag.all{color:var(--primary-dark);border-color:color-mix(in srgb,var(--primary) 32%,transparent);
-               background:var(--primary-wash)}
-  .tb .tag:hover{border-color:var(--border-strong);color:var(--text)}
-  .tb .tag[aria-pressed="true"]{border-color:var(--on);color:var(--on);
-           background:var(--on-wash)}
-  .tb .tag[aria-pressed="true"] b{color:var(--on)}
-  .tb .tag[aria-pressed="true"]:hover{border-color:var(--on);color:var(--on)}
-  /* A tick, so a set of toggles does not read as a set of links. */
-  .tb .tag[aria-pressed="true"]::before{content:"✓ ";font-weight:700}
-  .tb form{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .tb input{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);color:var(--text);
-            border:1px solid var(--border);border-radius:999px;padding:6px 12px;min-width:200px;min-height:34px}
-  .tb input::placeholder{color:var(--text-faint)}
-  .tb button,.tb a.clear{font-family:var(--font-mono);font-size:12px;background:var(--surface);
-            color:var(--text-muted);border:1px solid var(--border);border-radius:999px;padding:6px 12px;
-            cursor:pointer;min-height:34px;text-decoration:none;display:inline-flex;align-items:center}
-  .tb button:hover,.tb a.clear:hover{color:var(--text);border-color:var(--border-strong)}
-  /* The way back out of a filter, in the same colour as the thing that is on. */
-  .tb a.clear{color:var(--on);border-color:color-mix(in srgb,var(--on) 40%,transparent)}
-  .tb a.clear:hover{color:var(--on);border-color:var(--on)}
-  .tb-count{font-size:11px;color:var(--text-faint);margin-left:auto;white-space:nowrap}
-  @media (max-width:640px){ .tb-count{margin-left:0;flex-basis:100%} }
-
   /* --- needs attention: the ranked stories above the headline list.
          Shares the pulse's surface and radius -- they are two views of the
          same rows, and a second card style would imply a second source. */
   .att{display:grid;gap:8px;margin-top:12px}
   .att .story{background:var(--surface);border:1px solid var(--border);border-radius:12px;
               padding:11px 13px;display:grid;grid-template-columns:30px 1fr;gap:11px;align-items:start}
-  .att .story.hi{border-color:color-mix(in srgb,var(--down) 42%,transparent)}
+  .att .story.hi{border-color:color-mix(in srgb,var(--alert) 45%,transparent)}
   .att .story.mid{border-color:color-mix(in srgb,var(--primary) 34%,transparent)}
-  .att .rk{font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-faint);
+  .att .rk{font-family:var(--font-mono);font-size:16px;font-weight:700;color:var(--text-muted);
            text-align:right;line-height:1.35}
-  .att .story.hi .rk{color:var(--down)} .att .story.mid .rk{color:var(--primary-dark)}
+  .att .story.hi .rk{color:var(--alert)} .att .story.mid .rk{color:var(--primary-dark)}
   .att .hd{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
   .att .hd .tick{font-family:var(--font-mono);font-size:11.5px;font-weight:600}
-  .att .hd .when{font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint)}
+  .att .hd .when{font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted)}
   .att h3{margin:1px 0 0;font-size:13.5px;font-weight:600;letter-spacing:-.005em}
   .att h3 a{text-decoration:none} .att h3 a:hover{text-decoration:underline}
   .att .flags{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
-  .att .flag{font-family:var(--font-mono);font-size:10.5px;border:1px solid var(--border);
+  .att .flag{font-family:var(--font-mono);font-size:11.5px;border:1px solid var(--border);
              border-radius:999px;padding:2px 8px;color:var(--text-muted);background:var(--surface-2);
              white-space:nowrap}
   .att .flag.k{border-color:color-mix(in srgb,var(--primary) 40%,transparent);color:var(--primary-dark)}
+  .att .flag.e{border-color:color-mix(in srgb,var(--alert) 45%,transparent);color:var(--alert);text-decoration:none}
   .att .flag.d{border-color:color-mix(in srgb,var(--down) 40%,transparent);color:var(--down)}
   .att .flag.u{border-color:color-mix(in srgb,var(--up) 40%,transparent);color:var(--up)}
   .att .flag.w{border-style:dashed}
   /* the score as its parts. A single number nobody can decompose is the thing
      to avoid, so the bar is only ever a picture of the line beneath it. */
-  .att .why{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);margin-top:6px;
+  .att .why{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);margin-top:6px;
             display:flex;flex-wrap:wrap;gap:9px}
   .att .why b{font-weight:600;color:var(--text-muted)}
   .att details{margin-top:7px}
-  .att summary{cursor:pointer;font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint);
+  .att summary{cursor:pointer;font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted);
                list-style:none;padding:5px 0}
   .att summary::-webkit-details-marker{display:none}
   .att summary::before{content:"\\25b8 "}
@@ -598,8 +577,8 @@ export const STYLE = `
   .att details ul{list-style:none;margin:6px 0 0;padding:0 0 0 12px;border-left:1px solid var(--border);
                   display:grid;gap:4px;font-size:12px}
   .att details li{display:grid;grid-template-columns:50px 1fr;gap:8px;align-items:baseline}
-  .att details .d{font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint)}
-  .att details .h{font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint)}
+  .att details .d{font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted)}
+  .att details .h{font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted)}
   @media (max-width:640px){
     /* One column, so the rank reads as a label above the story rather than
        drifting to the far right of an empty row. */
@@ -611,42 +590,14 @@ export const STYLE = `
   /* --- happening now */
   .pulse{display:grid;gap:10px;margin-top:14px;padding:14px;border-radius:12px;
          background:var(--surface);border:1px solid var(--border)}
-  .pulse .row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .pulse .tag{font-family:var(--font-mono);font-size:11px;background:var(--surface-2);
-              border:1px solid var(--border);border-radius:999px;padding:3px 9px;color:var(--text-muted)}
-  .pulse .tag b{color:var(--text);font-weight:600}
-  .pulse .tag.hot{border-color:color-mix(in srgb,var(--primary) 35%,transparent);color:var(--primary-dark)}
   .pulse ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
   .pulse ol li{font-size:12.5px;display:grid;grid-template-columns:56px 44px 1fr;gap:10px;align-items:baseline}
-  .pulse ol li .d{font-family:var(--font-mono);font-size:11px;color:var(--text-faint)}
-  .pulse a.tag{text-decoration:none}
-  .pulse a.tag:hover{border-color:var(--border-strong);color:var(--text)}
-  .pulse a.tag[aria-current="true"]{border-color:var(--on);color:var(--on);background:var(--on-wash)}
-  .pulse a.tag[aria-current="true"] b{color:var(--on)}
-  .pulse a.tag[aria-current="true"]:hover{border-color:var(--on);color:var(--on)}
-  .tagfilter{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  .tagfilter input{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);color:var(--text);
-                   border:1px solid var(--border);border-radius:999px;padding:6px 12px;min-width:200px;min-height:34px}
-  .tagfilter input::placeholder{color:var(--text-faint)}
-  .tagfilter button,.tagfilter a.clear{font-family:var(--font-mono);font-size:12px;background:var(--surface);
-                   color:var(--text-muted);border:1px solid var(--border);border-radius:999px;
-                   padding:6px 12px;cursor:pointer;min-height:34px;text-decoration:none;
-                   display:inline-flex;align-items:center}
-  .tagfilter button:hover,.tagfilter a.clear:hover{color:var(--text);border-color:var(--border-strong)}
-
+  .pulse ol li .d{font-family:var(--font-mono);font-size:11px;color:var(--text-muted)}
   /* --- the tag split on a company page */
-  .split{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
-  .split .n{font-family:var(--font-mono);font-size:12px;border:1px solid var(--border);
-            border-radius:999px;padding:3px 10px;background:var(--surface-2)}
-  .split .n b{font-weight:600}
-  .split .n.pos{color:var(--up);border-color:color-mix(in srgb,var(--up) 32%,transparent);background:var(--up-wash)}
-  .split .n.neg{color:var(--down);border-color:color-mix(in srgb,var(--down) 32%,transparent);background:var(--down-wash)}
-  .taglist{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}
-  .taglist a{font-family:var(--font-mono);font-size:11px;background:var(--surface-2);text-decoration:none;
-             border:1px solid var(--border);border-radius:999px;padding:3px 9px;color:var(--text-muted)}
-  .taglist a:hover{color:var(--text);border-color:var(--border-strong)}
-  .taglist a b{color:var(--text);font-weight:600}
-
+  .co-head{display:flex;align-items:baseline;gap:6px 14px;flex-wrap:wrap;margin-top:22px}
+  .co-head h1{font-family:var(--font-mono);font-size:24px;font-weight:700;letter-spacing:-.01em}
+  .co-stat{font-size:13px;color:var(--text-muted)}
+  .co-stat b{font-family:var(--font-mono);font-weight:600;color:var(--text)}
   /* --- generated FAQ. One native <details> per question: no script, open by
          URL fragment, and readable with the stylesheet off. */
   .faq{display:flex;flex-direction:column;gap:6px;margin-top:8px}
@@ -654,7 +605,7 @@ export const STYLE = `
   .faq details[open]{background:var(--surface-2);border-color:var(--border-strong)}
   .faq summary{cursor:pointer;list-style:none;font-size:13px;font-weight:600;display:flex;gap:9px;align-items:baseline}
   .faq summary::-webkit-details-marker{display:none}
-  .faq summary::before{content:"+";font-family:var(--font-mono);color:var(--text-faint);flex:0 0 auto}
+  .faq summary::before{content:"+";font-family:var(--font-mono);color:var(--text-muted);flex:0 0 auto}
   .faq details[open] summary::before{content:"−";color:var(--primary)}
   .faq summary:hover{color:var(--primary-light)}
   .faq .a{font-size:12.5px;color:var(--text-muted);line-height:1.6;margin:8px 0 0 18px}
@@ -663,7 +614,7 @@ export const STYLE = `
                  border:1px solid color-mix(in srgb,var(--primary) 35%,transparent);border-radius:999px;
                  padding:7px 14px;cursor:pointer;min-height:34px}
   .genbar button:hover{border-color:var(--primary)}
-  .genbar button[disabled]{background:var(--surface-2);color:var(--text-faint);
+  .genbar button[disabled]{background:var(--surface-2);color:var(--text-muted);
                            border-color:var(--border);cursor:not-allowed}
   .genbar form{margin:0}
 
@@ -683,17 +634,17 @@ export const STYLE = `
     .genbar.busy .sp{animation:none;border-top-color:color-mix(in srgb,var(--primary) 35%,transparent)}
   }
   .genbar.busy button{cursor:progress}
-  .genbar .wait{font-size:11.5px;color:var(--text-faint);display:none}
+  .genbar .wait{font-size:11.5px;color:var(--text-muted);display:none}
   .genbar.busy .wait{display:inline}
 
   /* --- sources under a generated claim */
   .cites{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;margin-top:5px}
-  .cites .lb{font-family:var(--font-mono);font-size:9.5px;letter-spacing:.07em;
-             text-transform:uppercase;color:var(--text-faint)}
-  .cites a,.cites span.dead{font-family:var(--font-mono);font-size:10.5px;color:var(--primary-dark);
+  .cites .lb{font-family:var(--font-mono);font-size:11px;letter-spacing:.07em;
+             text-transform:uppercase;color:var(--text-muted)}
+  .cites a,.cites span.dead{font-family:var(--font-mono);font-size:11.5px;color:var(--primary-dark);
             text-decoration:none;border-bottom:1px dashed color-mix(in srgb,var(--primary) 40%,transparent)}
   .cites a:hover{color:var(--primary);border-bottom-style:solid}
-  .cites span.dead{color:var(--text-faint);border-bottom-color:var(--border)}
+  .cites span.dead{color:var(--text-muted);border-bottom-color:var(--border)}
 
   /* --- the news summary */
   .brief{margin:8px 0 0;display:flex;flex-direction:column;gap:11px}
@@ -704,12 +655,12 @@ export const STYLE = `
   .askbox input{flex:1;min-width:220px;font-size:13px;background:var(--surface-2);color:var(--text);
                 border:1px solid var(--border);border-radius:999px;padding:9px 14px;min-height:38px;
                 font-family:var(--font-ui)}
-  .askbox input::placeholder{color:var(--text-faint)}
+  .askbox input::placeholder{color:var(--text-muted)}
   .askbox input:focus-visible{border-color:var(--primary)}
   .answer{margin-top:9px;padding:12px 14px;border-radius:10px;background:var(--surface-2);
           border:1px solid var(--border)}
   .answer .q{font-size:12.5px;font-weight:600;display:flex;gap:8px;align-items:baseline}
-  .answer .q::before{content:"Q";font-family:var(--font-mono);font-size:10px;color:var(--primary);
+  .answer .q::before{content:"Q";font-family:var(--font-mono);font-size:11px;color:var(--primary);
                      letter-spacing:.08em}
   .answer .a{font-size:12.5px;color:var(--text-muted);line-height:1.6;margin:7px 0 0}
   .asked{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;margin-top:8px}
@@ -806,10 +757,8 @@ export const STYLE = `
   .bstats .n{font-family:var(--font-mono);font-weight:600;color:var(--text)}
   .bstats b{font-family:var(--font-mono);font-weight:600}
   .bstats .sep{color:var(--text-faint)}
-  .bstats .topic{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);
-                 background:var(--surface-2);border:1px solid var(--border);
-                 border-radius:999px;padding:2px 9px;margin-left:5px}
-  .bstats .topic b{color:var(--text);margin-left:3px}
+  .bstats .topic{color:var(--text-muted)}
+  .bstats .topic b{font-family:var(--font-mono);color:var(--text);margin-left:3px}
 
   /* Fullscreen is the browser's own, so there is no overlay to get wrong and
      Escape already works. The board drops its 16/9 and fills whatever shape
@@ -823,34 +772,33 @@ export const STYLE = `
      rows. The headlines sit inline rather than behind a hover -- the treemap
      hides them because a 2%-wide tile has nowhere to put them, and a list has
      no such excuse. */
-  .mv-tabs{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
-  .secpick{margin:2px 0 10px;scroll-margin-top:14px}
-  .idxs{display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 8px}
-  .idx{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;font-family:var(--font-mono);
-       font-size:12px;font-variant-numeric:tabular-nums}
+  .mv-tabs{display:inline-flex;gap:2px;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:2px}
+  .secpick{display:flex;gap:6px;align-items:center;margin:0;scroll-margin-top:14px}
+  .secpick select{font-family:var(--font-mono);font-size:12px;background:var(--surface-2);color:var(--text);
+                  border:1px solid var(--border);border-radius:8px;padding:5px 10px;min-height:32px}
+  .idxs{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 0}
+  .idx{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;font-family:var(--font-mono);
+       font-size:13px;font-variant-numeric:tabular-nums;background:var(--surface);border:1px solid var(--border);
+       border-radius:10px;padding:9px 14px}
   .idx .nm{font-weight:600;color:var(--text)}
   .idx .px{color:var(--text)}
-  .idx .k{font-size:10px;color:var(--text-faint);letter-spacing:.05em}
-  .idx .faint{font-size:10.5px}
-  .secpick .mv-tab span{font-size:10px;margin-left:2px}
-  .mv-tab{font-family:var(--font-mono);font-size:11px;text-decoration:none;
-          color:var(--text-muted);background:var(--surface-2);
-          border:1px solid var(--border);border-radius:999px;padding:4px 11px;min-height:28px;
-          display:inline-flex;align-items:center}
-  .mv-tab:hover{color:var(--text);border-color:var(--border-strong)}
-  .mv-tab.on{color:var(--primary-dark);background:var(--primary-wash);
-             border-color:color-mix(in srgb,var(--primary) 32%,transparent)}
+  .idx .k{font-size:11px;color:var(--text-muted);letter-spacing:.05em}
+  .idx .faint{font-size:11.5px}
+  .mv-tab{font-family:var(--font-mono);font-size:12px;text-decoration:none;color:var(--text-muted);
+          border-radius:7px;padding:4px 10px;min-height:28px;display:inline-flex;align-items:center}
+  .mv-tab:hover{color:var(--text)}
+  .mv-tab.on{color:var(--text);background:var(--surface-3)}
 
   .mv-cols{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
   @media (max-width:760px){ .mv-cols{grid-template-columns:1fr} }
-  .mv-side h4{margin:0 0 6px;font-family:var(--font-mono);font-size:10.5px;font-weight:600;
-              letter-spacing:.09em;text-transform:uppercase;color:var(--text-faint)}
+  .mv-side h4{margin:0 0 6px;font-family:var(--font-mono);font-size:11.5px;font-weight:600;
+              letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted)}
   .mv-side.up h4{color:var(--up)}
   .mv-side.dn h4{color:var(--down)}
   .mv-list{list-style:none;margin:0;padding:0;display:grid;gap:6px}
   .mv{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px}
   .mv-hd{display:flex;align-items:baseline;gap:8px}
-  .mv-hd .rk{font-family:var(--font-mono);font-size:10px;color:var(--text-faint);
+  .mv-hd .rk{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);
              min-width:11px}
   .mv-hd .tick{font-family:var(--font-mono);font-size:12px;font-weight:600;
                color:var(--text);text-decoration:none}
@@ -858,7 +806,7 @@ export const STYLE = `
   .mv-px{font-size:11px;color:var(--text-muted);margin-left:auto}
   .mv-ch{font-size:12px;font-weight:600}
   .mv-ch.pos{color:var(--up)} .mv-ch.neg{color:var(--down)}
-  .on-note{color:var(--on)}
+  .on-note{color:var(--alert)}
   .mv-nm{margin:2px 0 0 19px;font-size:11.5px;color:var(--text-muted);line-height:1.35}
   .mv-notes{list-style:none;margin:7px 0 0 19px;padding:7px 0 0;
             border-top:1px solid var(--border);display:grid;gap:6px}
@@ -866,14 +814,14 @@ export const STYLE = `
   .mv-notes .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
                color:var(--text);text-decoration:none;padding:4px 0}
   .mv-notes a.t:hover{text-decoration:underline}
-  .mv-notes .k{flex:none;font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);
+  .mv-notes .k{flex:none;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);
                letter-spacing:.05em;text-transform:uppercase}
   .mv-notes .t.pos{color:var(--up)} .mv-notes .t.neg{color:var(--down)}
   .mv-none{margin:7px 0 0 19px;padding-top:7px;border-top:1px solid var(--border);
-           font-size:11.5px;color:var(--text-faint);line-height:1.35}
+           font-size:11.5px;color:var(--text-muted);line-height:1.35}
 
   .scale{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:8px;
-         font-family:var(--font-mono);font-size:10.5px;color:var(--text-faint)}
+         font-family:var(--font-mono);font-size:11.5px;color:var(--text-muted)}
   .scale .ramp{display:flex;gap:2px}
   .scale .ramp i{width:15px;height:11px;border-radius:2px;display:block;border:1px solid var(--border)}
 
@@ -932,10 +880,12 @@ const qs = (watchlist: string[]): string => (watchlist.length ? `?w=${watchlist.
 
 function nav(active: string, watchlist: string[]): string {
   const w = qs(watchlist);
-  // Two views, not four. The agenda IS the calendar now, and a single day is
-  // somewhere you arrive by clicking a cell -- not a destination worth a tab.
+  // Three views, one question each: what is coming and being said about my
+  // names (Agenda), what the whole market just did (Market), one company in
+  // depth (Company). A single day is a drill-down, not a destination.
   const tabs: [string, string, string][] = [
     ["agenda", `/${w}`, "Agenda"],
+    ["market", `/market${w}`, "Market"],
     ["ticker", `/ticker${w ? `${w}&` : "?"}symbol=${watchlist[0] ?? "BBCA"}`, "Company"],
   ];
   return `<nav class="tabs" aria-label="Views">${tabs
@@ -946,6 +896,30 @@ function nav(active: string, watchlist: string[]): string {
     .join("")}</nav>`;
 }
 
+/**
+ * An ⓘ beside a heading, and the explanation it opens.
+ *
+ * The page used to print every one of these inline, under every block, so
+ * the method competed with the answer for the same attention. It is still all
+ * here -- trust is the product -- one click away rather than in front.
+ * Native popover: no script, Escape and click-outside close it, and a
+ * browser without popover support renders the text inline instead.
+ */
+export function info(id: string, title: string, body: string, cls = ""): string {
+  return `<button type="button" class="info" popovertarget="${esc(id)}" aria-label="About: ${esc(title)}" title="How to read this">i</button>
+    <div class="pop-card${cls ? ` ${cls}` : ""}" id="${esc(id)}" popover>
+      <button type="button" class="ghost x" popovertarget="${esc(id)}" popovertargetaction="hide">Close</button>
+      <h3>${esc(title)}</h3>${body}</div>`;
+}
+
+/** A section heading: the title, a mono sub-line for its range, an optional
+ * ⓘ, and anything that belongs at its right edge (a download, a switcher). */
+function head(title: string, o: { id?: string; sub?: string; info?: string; end?: string } = {}): string {
+  return `<div class="sh"${o.id ? ` id="${esc(o.id)}"` : ""}><h2>${esc(title)}</h2>${
+    o.sub ? `<span class="sub">${o.sub}</span>` : ""
+  }${o.info ?? ""}${o.end ? `<span class="end">${o.end}</span>` : ""}</div>`;
+}
+
 export interface Shell {
   title: string;
   active: string;
@@ -954,26 +928,16 @@ export interface Shell {
   mock: boolean;
   asOf: string | null;
   credits: string | null;
-  /** The route this page is on, and its own query params, so the watchlist
-   * bar in the shell can round-trip you back to it. */
-  self?: string;
-  keep?: Record<string, string | undefined>;
-  /** Every company on record, for the filter's dropdown. */
-  known?: string[];
-  /** A route-specific filter bar, under the companies bar and above the view
-   * tabs. Only /month has one. */
+  /** The page's filter bar (filterBar), straight under the header. A page
+   * nothing narrows -- Market -- has none, and that absence is the promise. */
   filters?: string;
-  /** Drawn ABOVE the filters, straight under the header: for a block no filter
-   * on the page narrows. Position is the promise -- a control sits above what
-   * it controls, so anything placed over the filters must ignore them. */
-  lead?: string;
   /**
    * Opt in to the dashboard shell: a wider column on a big screen, and the
    * body laid out in two tracks instead of one.
    *
-   * Only the agenda asks for it. A day and a company page are prose and a
-   * list, and prose set 1300px wide is harder to read, not easier -- the
-   * width is worth taking only where there is a second thing to put in it.
+   * The agenda, the market and a company ask for it: each has a second track
+   * to put in the width. A day is one list, and a list set 1300px wide is
+   * harder to read, not easier.
    */
   wide?: boolean;
 }
@@ -988,18 +952,32 @@ export function page(s: Shell): string {
 <style>${STYLE}</style>
 </head>
 <body>
-${s.mock ? `<div class="mock mono">MOCK_MODE · fixture data, no API key, no network · every number on this page is fabricated</div>` : ""}
+${s.mock ? `<div class="mock"><b>MOCK_MODE</b> · fixture data, no API key, no network · every number on this page is fabricated</div>` : ""}
 <div class="wrap${s.wide ? " wide" : ""}">
   <header class="top">
-    <a class="brand" href="/${qs(s.watchlist)}" style="text-decoration:none"><span class="dot"></span>NewsIDX <small>IDX event agenda</small></a>
+    <a class="brand" href="/${qs(s.watchlist)}"><span class="dot"></span>NewsIDX</a>
+    ${nav(s.active, s.watchlist)}
     <span class="sp"></span>
+    <button class="ghost" type="button" popovertarget="about">About</button>
     <button class="ghost" id="theme" type="button">Light</button>
   </header>
-  ${s.lead ? `<section class="lead">${s.lead}</section>` : ""}
-  ${watchlistBar(s.watchlist, s.self ?? "/", s.keep ?? {}, s.known ?? [])}
   ${s.filters ?? ""}
-  ${nav(s.active, s.watchlist)}
   ${s.body}
+  <div class="pop-card drawer" id="about" popover>
+    <button type="button" class="ghost x" popovertarget="about" popovertargetaction="hide">Close</button>
+    <h3>How to read NewsIDX</h3>
+    ${legend(true)}
+    <h4>Colour</h4>
+    <p><b class="pos">Green</b> and <b class="neg">red</b> are a price move and nothing else.
+    <span class="bull">▲</span> / <span class="bear">▼</span> is Sectors' Bullish / Bearish tag on a
+    headline: their label, not ours, and a description of coverage rather than a forecast.
+    <b style="color:var(--alert)">Amber</b> means soon: under a week to go, or the top-ranked story.</p>
+    <h4>Where things are</h4>
+    <p><b>Agenda</b> is your companies: what is coming on the left, what is being said on the
+    right. <b>Market</b> is the whole exchange and takes no filter. <b>Company</b> is one name in
+    depth. Every <b>i</b> beside a heading explains that block.</p>
+    <p>Research tooling, not investment advice.</p>
+  </div>
   <footer>
     <span>${s.mock ? "fixtures" : "Sectors API"}${s.asOf ? ` as of ${esc(s.asOf)}` : ""}</span>
     ${s.credits ? `<span>${esc(s.credits)}</span>` : ""}
@@ -1010,6 +988,12 @@ ${s.mock ? `<div class="mock mono">MOCK_MODE · fixture data, no API key, no net
   // The only script on the page. Navigation is real links -- the calendar
   // below only shortcuts one of them; this is the theme
   // the design system already ships (plan.md §4d).
+  // With script on, a select submits itself and its Show button goes; with
+  // it off, the button is the way and nothing is lost.
+  document.documentElement.classList.add('js');
+  document.querySelectorAll('select[data-auto]').forEach(function (s) {
+    s.addEventListener('change', function () { s.form.requestSubmit(); });
+  });
   var btn = document.getElementById('theme');
   var dark = function(){ return (document.documentElement.dataset.theme || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')) === 'dark'; };
   var paint = function(){ btn.textContent = dark() ? 'Light' : 'Dark'; };
@@ -1308,110 +1292,24 @@ function pager(
   </nav>`;
 }
 
-function legend(extra?: string): string {
-  return `<div class="legend">
-    <span><i class="sw"></i>Fact — it happened, with the source it came from</span>
-    <span><i class="sw s"></i>Scheduled — the issuer dated it</span>
-    <span><i class="sw p"></i>Predicted — we fitted it from the company's own history. A window, never a date, with the hit rate beside it</span>
-    <span><b class="pos">Green</b> / <b class="neg">red</b> — Sectors tagged that story Bullish / Bearish. Their label, not ours, and a description of coverage rather than a forecast.</span>
-    ${extra ? `<span>${esc(extra)}</span>` : ""}
-  </div>`;
+/**
+ * The key to the three shapes. Compact under a list; in full inside About.
+ * Provenance is the product, so the short key is never dropped -- only the
+ * sentences explaining it moved behind a click.
+ */
+function legend(full = false): string {
+  const rows: [string, string, string][] = [
+    ["sw", "Fact", "it happened, with the source it came from"],
+    ["sw s", "Scheduled", "the issuer dated it"],
+    ["sw p", "Predicted", "fitted from the company's own history: a window, never a date, with the hit rate beside it"],
+  ];
+  return `<div class="key${full ? " full" : ""}">${rows
+    .map(([c, k, d]) => `<span><i class="${c}"></i>${full ? `<span><b>${k}</b> — ${d}</span>` : k}</span>`)
+    .join("")}${
+    full ? "" : `<span><span class="bull">▲</span><span class="bear">▼</span> Sectors' Bullish / Bearish tag</span>`
+  }</div>`;
 }
 
-/**
- * The one filter in the product: which companies every page is about.
- *
- * It scopes every route, so it lives in the shell above the tabs rather than
- * on any single page -- there used to be a second, per-page "Ticker" dropdown
- * as well, and two controls meaning the same thing is one control too many.
- *
- * The box adds ONE company at a time, and that is the whole design. It used to
- * hold the full comma-separated list, which quietly broke the dropdown: a
- * browser matches a <datalist> against the entire field, so once the value was
- * "BBCA,TLKM" nothing matched and the suggestions stopped appearing exactly
- * when you had most use for them. An empty box suggests properly, needs no
- * comma typed by hand, and never makes you retype a list to change one name.
- *
- * The selection itself lives in the pills -- each one a link that removes it --
- * so the current state is readable rather than parsed out of a text field.
- * Empty is the default and means every company, which the count says out loud.
- *
- * `self` + `keep` carry the page you are on through both the form and the
- * remove links, so filtering on /month leaves you on /month.
- */
-function watchlistBar(
-  watchlist: string[],
-  self: string,
-  keep: Record<string, string | undefined>,
-  known: string[] = []
-): string {
-  const kept = Object.entries(keep).filter(([, v]) => v) as [string, string][];
-  const href = (list: string) =>
-    `${self}?${[["w", list], ...kept]
-      .filter(([, v]) => v)
-      .map(([k, v]) => `${k}=${encodeURIComponent(v)}`)
-      .join("&")}`;
-
-  // Only what can still be added: an option you already picked is noise.
-  const options = known.filter((s) => !watchlist.includes(s));
-  // A name we hold no rows for filters the page to nothing, which looks like
-  // a broken product unless we say what happened.
-  const unknown = known.length ? watchlist.filter((s) => !known.includes(s)) : [];
-
-  const count = watchlist.length
-    ? `${watchlist.length} of ${known.length} ${known.length === 1 ? "company" : "companies"}`
-    : `All ${known.length || ""} ${known.length === 1 ? "company" : "companies"}`.replace("  ", " ");
-
-  return `<div class="wl">
-    <span class="wl-label mono" id="wl-lab">Companies</span>
-    <div class="wl-picked" role="group" aria-labelledby="wl-lab">
-      ${
-        watchlist.length
-          ? watchlist
-              .map(
-                (s) =>
-                  `<a class="pill" href="${esc(href(watchlist.filter((x) => x !== s).join(",")))}"
-                      title="Stop showing ${esc(s)}" aria-label="Remove ${esc(s)}">${esc(s)} <span aria-hidden="true">×</span></a>`
-              )
-              .join("")
-          : `<span class="pill all">All companies</span>`
-      }
-    </div>
-    <form method="get" action="${esc(self)}">
-      ${kept.map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("")}
-      <input type="hidden" name="w" value="${esc(watchlist.join(","))}">
-      <input type="text" name="add" list="wl-known" value=""
-             aria-label="Add a company by ticker — pick from the list or type one"
-             placeholder="${watchlist.length ? "Add another…" : "Narrow to a company…"}"
-             spellcheck="false" autocomplete="off" enterkeyhint="done">
-      <datalist id="wl-known">${options.map((s) => `<option value="${esc(s)}"></option>`).join("")}</datalist>
-      <button type="submit">Add</button>
-      ${watchlist.length ? `<a class="pill add" href="${esc(href(""))}">Show all</a>` : ""}
-    </form>
-    <span class="wl-count mono">${esc(count)}</span>
-    ${
-      unknown.length
-        ? `<p class="wl-warn">No rows on record for <b>${unknown.map((s) => esc(s)).join("</b>, <b>")}</b> —
-             check the ticker, or run the backfill to fetch it.</p>`
-        : ""
-    }
-  </div>`;
-}
-
-/**
- * The topic filter, as its own bar under the companies bar.
- *
- * It sits with the watchlist rather than inside the headline list because both
- * are filters over the same rows, and a control buried in the block it filters
- * is only findable once you have already scrolled to what you were trying to
- * narrow. The view tabs below are navigation, which is why they come after.
- *
- * Chips and free text are one control: a chip sets the box, the box takes
- * anything, and the <datalist> offers what is actually on record. A GET form,
- * so a filtered view is a URL somebody can send, and it works with JavaScript
- * off like everything else here. Every link anchors at #headlines, because the
- * list it narrows is further down the page.
- */
 /**
  * How a Topic selection reads in a sentence. One topic is one quoted label;
  * several are joined with "or", because the filter is a union -- writing them
@@ -1426,83 +1324,145 @@ export function tagPhrase(tag: string): string {
   return `${quoted.slice(0, -1).join(", ")} or ${quoted[quoted.length - 1]}`;
 }
 
-export function tagBar(o: {
-  /** The route the bar submits back to -- whichever page it is sitting on. */
+/**
+ * The filter bar: the ONE filter pattern in the product.
+ *
+ * It replaces three scattered rows -- a companies bar, a topic bar of 14
+ * chips, and per-block chip rows -- with a single GET form under the header.
+ * Fields read left to right, Apply submits, and Clear exists only while
+ * something is narrowed, so a page showing less than it has always says so.
+ *
+ * Companies are added ONE at a time. A browser matches a <datalist> against
+ * the whole field, so a box holding "BBCA,TLKM" stops suggesting exactly when
+ * you have most use for it; an empty box always suggests. The selection lives
+ * in the pills, each a link that removes it.
+ *
+ * Topics are checkboxes in a popover. Checked boxes submit as repeated `tag`
+ * params, which the server joins into the same comma list parseTags reads.
+ * The counts are taken BEFORE the filter applies, so an option never vanishes
+ * the moment you use it. Several topics are OR: a second pick shows more.
+ *
+ * `company` swaps the companies field for a one-company picker: a company
+ * page is about exactly one name, and a multi-select there would be a filter
+ * that cannot do what it looks like it does.
+ */
+export function filterBar(o: {
   action: string;
-  tag: string;
-  topics: { label: string; n: number }[];
-  /** Everything else that page's URL is carrying, so filtering by topic does
-   * not quietly drop the month, the company or the price strip. */
-  hidden: Record<string, string | undefined>;
+  watchlist: string[];
+  known?: string[];
+  /** Everything else the page's URL carries, so filtering keeps it. */
+  keep?: Record<string, string | undefined>;
+  topics?: { label: string; n: number }[];
+  tag?: string;
   /** What the right-hand side says the filter is doing, in this page's terms. */
-  count: string;
+  count?: string;
+  company?: string;
 }): string {
-  // Options are counted BEFORE the filter is applied. Options that vanish the
-  // moment you use one are a dead end.
-  if (!o.topics.length && !o.tag) return "";
-
-  const params = (tag: string) =>
-    Object.entries({ ...o.hidden, tag })
+  const known = o.known ?? [];
+  const topics = o.topics ?? [];
+  const selected = parseTags(o.tag ?? "");
+  const kept = Object.entries(o.keep ?? {}).filter(([, v]) => v) as [string, string][];
+  const url = (w: string, tag: string) =>
+    `${o.action}?${[["w", w], ...kept, ["tag", tag]]
       .filter(([, v]) => v)
-      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
-      .join("&");
-  // No fragment. This bar sits at the top of the page, so picking a tag should
-  // leave you looking at the bar you just used -- jumping you down to the list
-  // it narrows loses the other chips and the Clear link. The pager inside the
-  // list anchors instead, because that one IS in the list.
-  const here = (q: string) => `${o.action}${q ? `?${q}` : ""}`;
-  const kept = Object.entries(o.hidden).filter(([, v]) => v) as [string, string][];
+      .map(([k, v]) => `${k}=${encodeURIComponent(v!)}`)
+      .join("&")}`.replace(/\?$/, "");
+  const wl = o.watchlist;
+  const tagStr = selected.join(",");
 
-  // The filter is a LIST, and the default is every topic. Selected chips are
-  // the whole state: the text input is just another way to write the same
-  // list, so the two never disagree.
-  const selected = parseTags(o.tag);
+  let companies: string;
+  if (o.company) {
+    const opts = [...new Set([o.company, ...known])].sort();
+    companies = `<label class="f-field"><span class="f-lab">Company</span>
+      <select name="symbol" aria-label="Company">${opts
+        .map((c) => `<option value="${esc(c)}"${c === o.company ? " selected" : ""}>${esc(c)}</option>`)
+        .join("")}</select></label>`;
+  } else {
+    // Only what can still be added: an option you already picked is noise.
+    const options = known.filter((x) => !wl.includes(x));
+    companies = `<div class="f-field" role="group" aria-labelledby="f-co">
+      <span class="f-lab" id="f-co">Companies</span>
+      ${
+        wl.length
+          ? wl
+              .map(
+                (x) =>
+                  `<a class="pill on" href="${esc(url(wl.filter((y) => y !== x).join(","), tagStr))}"
+                      title="Stop showing ${esc(x)}" aria-label="Remove ${esc(x)}">${esc(x)} <span aria-hidden="true">×</span></a>`
+              )
+              .join("")
+          : `<span class="pill all">All companies</span>`
+      }
+      <input type="text" name="add" list="wl-known" value=""
+             aria-label="Add a company by ticker — pick from the list or type one"
+             placeholder="${wl.length ? "Add another…" : "Add a company…"}"
+             spellcheck="false" autocomplete="off" enterkeyhint="done">
+      <datalist id="wl-known">${options.map((x) => `<option value="${esc(x)}"></option>`).join("")}</datalist>
+    </div>`;
+  }
+
+  const offered = [
+    ...topics,
+    // A topic typed into a URL and not on record still shows, checked, so it
+    // can be unticked rather than lingering invisibly in the query.
+    ...selected
+      .filter((t) => !topics.some((x) => x.label.toLowerCase() === t.toLowerCase()))
+      .map((label) => ({ label, n: 0 })),
+  ];
   const isOn = (label: string) => selected.some((t) => t.toLowerCase() === label.toLowerCase());
-  // Each chip toggles itself in or out and leaves the rest of the selection
-  // alone. Replacing the list on every click is what made this single-select.
-  const toggled = (label: string) =>
-    (isOn(label)
-      ? selected.filter((t) => t.toLowerCase() !== label.toLowerCase())
-      : [...selected, label].slice(0, MAX_TAGS)
-    ).join(",");
+  const topicField = offered.length
+    ? `<div class="f-field"><span class="f-lab" id="f-tp">Topics</span>
+        <button type="button" class="f-drop${selected.length ? " on" : ""}" popovertarget="f-topics"
+                aria-describedby="f-tp">${
+                  selected.length
+                    ? selected.length === 1
+                      ? esc(selected[0]!)
+                      : `${selected.length} topics`
+                    : `All ${topics.length} topics`
+                }</button>
+        <div class="pop-card f-pop" id="f-topics" popover>
+          <button type="button" class="ghost x" popovertarget="f-topics" popovertargetaction="hide">Close</button>
+          <h3>Topics</h3>
+          <p>Sectors' own tags. None ticked shows every topic; several show any of them.
+          Counts are before filtering.</p>
+          <div class="opts">${offered
+            .map(
+              (t) => `<label><input type="checkbox" name="tag" value="${esc(t.label)}"${
+                isOn(t.label) ? " checked" : ""
+              }>${esc(t.label)}<span class="n">${t.n}</span></label>`
+            )
+            .join("")}</div>
+          <div class="acts"><button type="submit" class="f-apply">Apply</button>${
+            selected.length ? `<a class="f-clear" href="${esc(url(wl.join(","), ""))}">Clear topics</a>` : ""
+          }</div>
+        </div></div>`
+    : "";
 
-  return `<div class="tb">
-    <span class="tb-label mono" id="tb-lab">Topic</span>
-    <form method="get" action="${esc(o.action)}">
-      ${kept.map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("")}
-      <input name="tag" list="pulse-tags" value="${esc(selected.join(", "))}" aria-labelledby="tb-lab"
-             placeholder="All topics. Or pick: Bullish, Dividend, …" spellcheck="false" autocomplete="off" enterkeyhint="search">
-      <datalist id="pulse-tags">
-        ${o.topics.map((t) => `<option value="${esc(t.label)}">${t.n}</option>`).join("")}
-      </datalist>
-      <button type="submit">Filter</button>
-      ${selected.length ? `<a class="clear" href="${esc(here(params("")))}">Clear${selected.length > 1 ? ` all ${selected.length}` : ""}</a>` : ""}
-    </form>
-    <span class="tb-count mono">${esc(o.count)}</span>
+  // A name we hold no rows for filters the page to nothing, which looks like
+  // a broken product unless we say what happened.
+  const unknown = known.length && !o.company ? wl.filter((x) => !known.includes(x)) : [];
+  const narrowed = (!o.company && wl.length) || selected.length;
+  const count =
+    o.count ??
+    (wl.length
+      ? `${wl.length} of ${known.length} ${known.length === 1 ? "company" : "companies"}`
+      : `All ${known.length || ""} ${known.length === 1 ? "company" : "companies"}`.replace("  ", " "));
+
+  return `<form class="fbar" method="get" action="${esc(o.action)}">
+    ${kept.map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("")}
+    ${o.company ? (wl.length ? `<input type="hidden" name="w" value="${esc(wl.join(","))}">` : "") : `<input type="hidden" name="w" value="${esc(wl.join(","))}">`}
+    ${companies}
+    ${topicField}
+    <button type="submit" class="f-apply">Apply</button>
+    ${narrowed ? `<a class="f-clear" href="${esc(url(o.company ? wl.join(",") : "", ""))}">${o.company ? "Clear topics" : "Clear filters"}</a>` : ""}
+    <span class="f-count mono">${esc(count)}</span>
     ${
-      o.topics.length
-        ? `<div class="tb-chips" role="group" aria-labelledby="tb-lab">${
-            // The default is every topic, so it gets said out loud. Without
-            // this the chips are all grey and the bar reads as "nothing is
-            // on" when in fact nothing is being hidden -- the same reason the
-            // companies bar carries an "All companies" pill.
-            selected.length ? "" : `<span class="tag all">All ${o.topics.length} tags on record</span>`
-          }${o.topics
-            .slice(0, 14)
-            .map((t) => {
-              const on = isOn(t.label);
-              // role=group + aria-pressed, not a link list: this reads as a set
-              // of toggles, which is what it now is.
-              return `<a class="tag${t.n >= 3 ? " hot" : ""}${on ? " on" : ""}" href="${esc(
-                here(params(toggled(t.label)))
-              )}" role="button" aria-pressed="${on ? "true" : "false"}" title="${
-                on ? `Stop showing ${esc(t.label)}` : `Add ${esc(t.label)} to the filter`
-              }"><b>${esc(t.label)}</b> ×${t.n}</a>`;
-            })
-            .join("")}</div>`
+      unknown.length
+        ? `<p class="f-warn">No rows on record for <b>${unknown.map((x) => esc(x)).join("</b>, <b>")}</b> —
+             check the ticker, or run the backfill to fetch it.</p>`
         : ""
     }
-  </div>`;
+  </form>`;
 }
 
 // ---------------------------------------------------------------- pages
@@ -1640,26 +1600,22 @@ function headMove(s: SectorBox): string {
  * rectangles. The watchlist still has the last word on where you go next --
  * every tile is a link to that company's page, which is scoped.
  */
-/** The board's own filter: one sector, or all of them. It sits inside the
- * board, because the page's filters below do not reach it. Links, not a form:
- * each is a URL you can send, and it carries everything else the page holds. */
+/** The board's own filter: one sector, or all of them. A select, not a row
+ * of eleven chips: the sector moves those chips carried are already printed
+ * on the treemap's own headings. A GET form, so the result is a URL you can
+ * send, and it carries everything else the page holds. */
 function sectorPicker(b: Board, keep: Record<string, string | undefined>): string {
-  const href = (s: string) => {
-    const qs = Object.entries({ ...keep, sector: s || undefined })
-      .filter(([, v]) => v)
-      .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
-      .join("&");
-    return `/${qs ? `?${qs}` : ""}#board`;
-  };
-  const chip = (s: string, label: string, change: number | null) => {
-    const move = change == null ? "" : ` <span class="${posneg(change)}">${esc(pct(change))}</span>`;
-    return s === b.sector
-      ? `<span class="mv-tab on" aria-current="true">${esc(label)}${move}</span>`
-      : `<a class="mv-tab" href="${esc(href(s))}">${esc(label)}${move}</a>`;
-  };
-  return `<div class="mv-tabs secpick" role="group" aria-label="Sector">${chip("", "All sectors", null)}${b.choices
-    .map((c) => chip(c.sector, c.sector, c.change))
-    .join("")}</div>`;
+  const kept = Object.entries(keep).filter(([k, v]) => v && k !== "sector") as [string, string][];
+  const opt = (v: string, label: string) =>
+    `<option value="${esc(v)}"${v === b.sector ? " selected" : ""}>${esc(label)}</option>`;
+  return `<form class="secpick" method="get" action="/market#board">
+    ${kept.map(([k, v]) => `<input type="hidden" name="${esc(k)}" value="${esc(v)}">`).join("")}
+    <label class="sr" for="secpick">Sector</label>
+    <select id="secpick" name="sector" data-auto>${opt("", "All sectors")}${b.choices
+      .map((c) => opt(c.sector, `${c.sector}${c.change == null ? "" : ` ${pct(c.change)}`}`))
+      .join("")}</select>
+    <button type="submit" class="ghost autobtn">Show</button>
+  </form>`;
 }
 
 /** The indices' day, week, month and year, one line each, over the board. */
@@ -1711,19 +1667,18 @@ export function renderBoard(
   const topics = b.topics.length
     ? `<span class="sep">·</span> most tagged ${b.topics
         .map((t) => `<span class="topic">${esc(t.tag)} <b>${esc(t.n)}</b></span>`)
-        .join("")}`
+        .join(", ")}`
     : "";
 
-  return `<div class="boardhd" id="board">
-      <p class="kicker">The board · ${
-        b.sector
-          ? `${esc(b.sector)} · ${esc(b.drawn)} names by industry`
-          : `${esc(b.drawn)} largest IDX names`
-      } as of ${esc(fmtShort(b.date))}</p>
-      <button class="ghost fsbtn" type="button" data-fs="board-wrap" hidden>Fullscreen</button>
-    </div>
-    ${indexStrip(indices)}
-    ${sectorPicker(b, keep)}
+  return `${indexStrip(indices)}
+    ${head("The board", {
+      id: "board",
+      sub: `${b.sector ? `${esc(b.sector)} · ${esc(b.drawn)} names by industry` : `${esc(b.drawn)} largest names`} · ${esc(
+        fmtShort(b.date)
+      )}`,
+      info: info("i-board", "The board", boardAbout(b)),
+      end: `${sectorPicker(b, keep)}<button class="ghost fsbtn" type="button" data-fs="board-wrap" hidden>Fullscreen</button>`,
+    })}
     <div class="bstats">${tone}${topics}</div>
     <div class="board-wrap" id="board-wrap"><div class="board-scroll"><div class="board">
       ${b.sectors
@@ -1744,9 +1699,12 @@ export function renderBoard(
       <span class="ramp">${ramp("up")}</span>
       <span>· area = market cap · <i class="sw" style="background:var(--primary);width:5px;height:5px;border-radius:50%"></i> has something on the record</span>
     </div>
-    <details class="why">
-      <summary>What this is, and what it is not</summary>
-      <p>Colour is the last closed session's move, as the Sectors API reported it when we
+`;
+}
+
+/** What the board is, and what it is not. Behind the ⓘ. */
+function boardAbout(b: Board): string {
+  return `<p>Colour is the last closed session's move, as the Sectors API reported it when we
       asked on ${esc(fmtShort(b.date))} — so a board drawn on a Monday is Friday's close.
       Area is market capitalisation. Both come from one market-wide call, which is why the
       whole board costs a single credit rather than one per company.</p>
@@ -1766,8 +1724,7 @@ export function renderBoard(
       tally is Sectors' own Bullish and Bearish tags and nothing inferred from the text;
       "most tagged" is every other tag those stories carried, commonest first. All of it
       covers ${esc(fmtShort(b.newsFrom))}–${esc(fmtShort(b.date))} and only the
-      ${esc(b.drawn)} companies drawn here.</p>
-    </details>`;
+      ${esc(b.drawn)} companies drawn here.</p>`;
 }
 
 /**
@@ -1785,7 +1742,7 @@ function attentionSection(a: Attention, watchlist: string[]): string {
   const w = watchlist.length ? `&w=${encodeURIComponent(watchlist.join(","))}` : "";
 
   if (!a.rows.length) {
-    return `<p class="kicker">Needs attention</p>
+    return `${head("Needs attention")}
       <div class="empty">None of the ${a.considered} stor${a.considered === 1 ? "y" : "ies"} in this
       range was carried by a second source or landed near a dated event. Nothing here needs
       looking at before the rest of the month does.</div>`;
@@ -1826,7 +1783,7 @@ function attentionSection(a: Attention, watchlist: string[]): string {
               )}`
             : `${kindLabel(r.near.kind).toLowerCase()} · ${esc(fmtShort(r.near.date))}`;
         f.push(
-          `<a class="flag d${r.near.cls === "predicted" ? " w" : ""}" href="/day?date=${esc(
+          `<a class="flag e${r.near.cls === "predicted" ? " w" : ""}" href="/day?date=${esc(
             r.near.date
           )}${w}">${when} ${what}</a>`
         );
@@ -1883,14 +1840,14 @@ function attentionSection(a: Attention, watchlist: string[]): string {
               : `<span class="${sentClass(t.lead)}">${esc(t.lead.title)}</span>`
           }</h3>
           <div class="flags">${f.join("")}</div>
+          <details><summary>Why #${i + 1}${t.members.length > 1 ? ` · ${t.members.length} headlines` : ""}</summary>
           <div class="why">${parts
             .slice(0, 4)
             .map((c) => `<span><b>${esc(ATTENTION_LABEL[c.key] ?? c.key)}</b> ${c.value.toFixed(1)}</span>`)
             .join("")}<span>= ${r.score.toFixed(1)}</span></div>
           ${
             t.members.length > 1
-              ? `<details><summary>${t.members.length} headlines</summary>
-                  <ul>${t.members
+              ? `<ul>${t.members
                     .slice()
                     .sort((x, y) => x.date!.localeCompare(y.date!))
                     .map(
@@ -1906,21 +1863,25 @@ function attentionSection(a: Attention, watchlist: string[]): string {
                           .map((x) => esc(x))
                           .join(" · ")}</span></span></li>`
                     )
-                    .join("")}</ul></details>`
+                    .join("")}</ul>`
               : ""
-          }
+          }</details>
         </div></article>`;
     })
     .join("");
 
-  return `<p class="kicker">Needs attention · ${esc(fmtShort(a.from))}–${esc(fmtShort(a.to))}</p>
-    <p class="note"><b>${a.rows.length}</b> of ${a.considered} stor${
-      a.considered === 1 ? "y" : "ies"
-    } cleared the floor — carried by a second source, or landing within
-    ${ATTENTION_NEAR_DAYS} days of a dated event. Sources are counted by publisher, and only the
-    ones in this feed, so the number is a floor on attention paid and never a measure of how many
-    people read anything. The ordering is a sort, not a claim: each row shows the parts it is made
-    of.</p>
+  return `${head("Needs attention", {
+      sub: `${esc(fmtShort(a.from))}–${esc(fmtShort(a.to))} · ${a.rows.length} of ${a.considered}`,
+      info: info(
+        "i-attention",
+        "Needs attention",
+        `<p><b>${a.rows.length}</b> of ${a.considered} stor${a.considered === 1 ? "y" : "ies"} cleared the
+        floor — carried by a second source, or landing within ${ATTENTION_NEAR_DAYS} days of a dated
+        event.</p><p>Sources are counted by publisher, and only the ones in this feed, so the number is a
+        floor on attention paid and never a measure of how many people read anything.</p><p>The ordering
+        is a sort, not a claim: open <b>Why</b> on any row for the parts its score is made of.</p>`
+      ),
+    })}
     <div class="att">${rows}</div>`;
 }
 
@@ -1967,7 +1928,7 @@ function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; pric
       .join("&");
 
   if (!p.topics.length && !p.total && !p.tag) {
-    return `<p class="kicker" id="headlines">${label}</p>
+    return `${head(label, { id: "headlines" })}
       <div class="empty">${
         future
           ? "This month has not started — no news on record."
@@ -1978,28 +1939,8 @@ function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; pric
   const counted = (s: "positive" | "negative" | "neutral") =>
     p.headlines.filter((h) => sentimentOf(h) === s).length;
 
-  return `<p class="kicker" id="headlines">${label} · ${esc(fmtShort(p.from))}–${esc(fmtShort(p.to))}</p>
+  return `${head(label, { id: "headlines", sub: `${esc(fmtShort(p.from))}–${esc(fmtShort(p.to))}` })}
   <div class="pulse">
-    ${
-      p.tickers.length
-        ? `<div class="row"><span class="faint mono" style="font-size:10.5px">MOST ACTIVE</span>
-             ${p.tickers
-               .map((t) => {
-                 // A company chip narrows THIS LIST and nothing else: it used
-                 // to jump to the company page, which answered a question
-                 // nobody asked by leaving the month you were reading. Its
-                 // own page is one click further on, from the headline.
-                 const on = t.symbol === p.who;
-                 return `<a class="tag${on ? " hot" : ""}" href="${esc(here(params({ who: on ? "" : t.symbol })))}"${
-                   on ? ' aria-current="true"' : ""
-                 } title="${on ? "Show every company again" : `Show ${esc(t.symbol)} headlines only`}"><b>${esc(
-                   t.symbol
-                 )}</b> ${t.n} · ${esc(t.kinds.map(kindLabel).join(", ").toLowerCase())}</a>`;
-               })
-               .join("")}
-             ${p.who ? `<a class="clear" href="${esc(here(params({ who: "" })))}">Show all companies</a>` : ""}</div>`
-        : ""
-    }
     ${
       p.total
         ? `<ol>${p.headlines
@@ -2014,10 +1955,6 @@ function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; pric
                     ? `<a class="src ${sentClass(h)}" href="${esc(h.sourceUrl)}" rel="noreferrer noopener" target="_blank"
                          title="Open the source at ${esc(domainOf(h.sourceUrl))}">${esc(h.title)} ↗</a>`
                     : esc(h.title)
-                }${
-                  (h.tags ?? []).length
-                    ? ` <span class="faint mono" style="font-size:10.5px">${(h.tags ?? []).map((t) => esc(t)).join(" · ")}</span>`
-                    : ""
                 }</span></li>`
             )
             .join("")}</ol>
@@ -2175,7 +2112,7 @@ export function renderMovers(
   // The switcher anchors itself: you should land looking at the list you just
   // changed, not at the top of a page four blocks above it.
   const link = (p: MoverPeriod) =>
-    `/?${Object.entries({ ...keep, movers: p })
+    `/market?${Object.entries({ ...keep, movers: p })
       .filter(([, v]) => v)
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
       .join("&")}#movers`;
@@ -2197,15 +2134,15 @@ export function renderMovers(
     </div>`;
 
   const total = m.gainers.length + m.losers.length;
-  return `<div class="boardhd" id="movers">
-      <p class="kicker">Biggest movers · ${esc(MOVER_LABEL[m.period])} to ${esc(
-        fmtShort(m.newsTo)
-      )}</p>
-    </div>
-    <div class="mv-tabs" role="group" aria-label="Period">${tabs}</div>
+  return `${head("Biggest movers", {
+      id: "movers",
+      sub: `${esc(MOVER_LABEL[m.period])} to ${esc(fmtShort(m.newsTo))}`,
+      info: info("i-movers", "Biggest movers", moversAbout(m, total)),
+      end: `<span class="mv-tabs" role="group" aria-label="Period">${tabs}</span>`,
+    })}
     <div class="bstats"><span class="n">${esc(m.withNotes)}</span> of ${esc(
       total
-    )} have something on the record<span class="sep">·</span>headlines from ${esc(
+    )} have something on the record — what was said while it moved, not why<span class="sep">·</span>headlines from ${esc(
       fmtShort(m.newsFrom)
     )}–${esc(fmtShort(m.newsTo))}${
       m.recordFrom
@@ -2218,9 +2155,12 @@ export function renderMovers(
       ${side("Gainers", m.gainers, "up")}
       ${side("Losers", m.losers, "dn")}
     </div>
-    <details class="why">
-      <summary>What this is, and what it is not</summary>
-      <p>Sectors' own top-gainers and top-losers list, five a side, ranked by the move over
+`;
+}
+
+/** What the movers are, and what they are not. Behind the ⓘ. */
+function moversAbout(m: Movers, total: number): string {
+  return `<p>Sectors' own top-gainers and top-losers list, five a side, ranked by the move over
       the period — its ranking, printed, not a second one computed here. The close and the
       date beside each name are the API's: <b>the session the move ends on</b>, which for a
       thinly traded name can trail the day we asked.</p>
@@ -2237,8 +2177,7 @@ export function renderMovers(
              headlines from ${esc(fmtShort(m.newsFrom))} onwards rather than from a year
              ago. The move is still the full year's; the coverage is not.</p>`
           : ""
-      }
-    </details>`;
+      }`;
 }
 
 /** Rows the table shows before it points at the ticker pages for the rest. */
@@ -2325,17 +2264,19 @@ export function upNext(items: Item[], watchlist: string[], today: string): strin
     : `<div class="empty">Nothing dated or predicted for ${watchlist.length ? "these companies" : "the market"} in the next 90 days.</div>`;
 
   const csv = `/upnext.csv${watchlist.length ? `?w=${encodeURIComponent(watchlist.join(","))}` : ""}`;
-  return `<div class="nx-head"><p class="kicker">Up next · ${
-    watchlist.length ? `your ${watchlist.length} compan${watchlist.length === 1 ? "y" : "ies"}` : "every company on record"
-  } · ${esc(fmtShort(today))}–${esc(fmtShort(shift(today, 90)))}</p>
-    ${items.length ? `<a class="nx-csv" href="${esc(csv)}" download>Download CSV</a>` : ""}</div>
+  return `${head("Up next", {
+      sub: `${watchlist.length ? `your ${watchlist.length} compan${watchlist.length === 1 ? "y" : "ies"}` : "every company on record"} · ${esc(
+        fmtShort(today)
+      )}–${esc(fmtShort(shift(today, 90)))}`,
+      end: items.length ? `<a class="nx-csv" href="${esc(csv)}" download>Download CSV</a>` : "",
+    })}
     ${kpis}
     ${table}
     ${
       quiet.length
         ? `<p class="note">Nothing on the calendar for <b>${quiet.map(esc).join(", ")}</b> — no date published and no rhythm we could fit.</p>`
         : ""
-    }${watchlist.length ? "" : `<p class="note">Pick companies above to add predicted windows for them.</p>`}`;
+    }${watchlist.length ? "" : `<p class="note">Add companies in the bar above to see predicted windows for them too.</p>`}`;
 }
 
 /**
@@ -2390,21 +2331,9 @@ export function renderMonth(
     pulse: Pulse;
     attention: Attention;
     known?: string[];
-    /** The market-wide picture, drawn above everything else. Null until a
-     * board has been fetched, which is a state the page renders rather than a
-     * reason not to serve it. */
-    board?: Board | null;
-    /** The ranked movers for the period the URL asked for. Same story: null
-     * renders as a sentence, not a 500. */
-    movers?: Movers | null;
-    /** What this page's URL is carrying, so the period switcher does not drop
-     * the month, the company selection or the topic filter. */
-    keep?: Record<string, string | undefined>;
     /** The selected names' next 90 days. Absent renders nothing: the tests
      * that build a bare month have no database to ask. */
     upcoming?: Item[];
-    /** Each index's 1D / 1W / 1M / 1Y, for the strip over the board. */
-    indexReturns?: IndexReturn[];
   }
 ): string {
   const w = watchlist.length ? `&w=${encodeURIComponent(watchlist.join(","))}` : "";
@@ -2434,8 +2363,8 @@ export function renderMonth(
       ${watchlist.length ? `<input type="hidden" name="w" value="${esc(watchlist.join(","))}">` : ""}
       ${opts.pulse.tag ? `<input type="hidden" name="tag" value="${esc(opts.pulse.tag)}">` : ""}
       ${opts.pulse.who ? `<input type="hidden" name="who" value="${esc(opts.pulse.who)}">` : ""}
-      <label for="pricepick">Price strip</label>
-      <select id="pricepick" name="price">
+      <label for="pricepick">Priced by</label>
+      <select id="pricepick" name="price" data-auto>
         ${
           indices.length
             ? `<optgroup label="Index">${indices.map((i) => opt(i.symbol, i.label)).join("")}</optgroup>`
@@ -2447,12 +2376,7 @@ export function renderMonth(
             : ""
         }
       </select>
-      <button type="submit">Show</button>
-      ${
-        watchlist.length
-          ? ""
-          : `<span class="hint">Pick companies above to price one of them instead.</span>`
-      }
+      <button type="submit" class="autobtn">Show</button>
     </form>`;
   const prev = shift(`${ym}-01`, -1).slice(0, 7);
   const next = shift(`${ym}-01`, 32).slice(0, 7);
@@ -2514,6 +2438,7 @@ export function renderMonth(
     })
     .join("");
 
+  const tag = opts.pulse.tag;
   return page({
     title: "NewsIDX Agenda",
     active: "agenda",
@@ -2521,81 +2446,96 @@ export function renderMonth(
     mock: opts.mock,
     asOf: opts.asOf,
     credits: opts.credits,
-    self: "/",
-    known: opts.known,
-    keep: {
-      month: ym,
-      tag: opts.pulse.tag || undefined,
-      who: opts.pulse.who || undefined,
-      price: opts.priceSymbol ?? undefined,
-      sector: opts.board?.sector || undefined,
-    },
-    filters: tagBar({
+    filters: filterBar({
       action: "/",
-      tag: opts.pulse.tag,
+      watchlist,
+      known: opts.known,
+      keep: { month: ym, price: opts.priceSymbol ?? undefined, who: opts.pulse.who || undefined },
       topics: opts.pulse.topics,
-      hidden: {
-        month: ym,
-        w: watchlist.join(",") || undefined,
-        price: opts.priceSymbol ?? undefined,
-        who: opts.pulse.who || undefined,
-        // The movers period survives a topic change: the two narrow different
-        // things, and resetting one from the other is a filter with a side
-        // effect.
-        movers: opts.movers?.period,
-        sector: opts.board?.sector || undefined,
-      },
-      count: opts.pulse.tag
-        ? `${opts.pulse.total} headline${opts.pulse.total === 1 ? "" : "s"} tagged ${tagPhrase(opts.pulse.tag)}`
-        : `All ${opts.pulse.topics.length} tag${opts.pulse.topics.length === 1 ? "" : "s"} on record shown`,
+      tag,
+      count: `${
+        watchlist.length ? `${watchlist.length} of ${(opts.known ?? []).length} companies` : `All ${(opts.known ?? []).length} companies`
+      } · ${tag ? `${opts.pulse.total} headline${opts.pulse.total === 1 ? "" : "s"} tagged ${tagPhrase(tag)}` : "every topic"}`,
     }),
     wide: true,
-    // The board is what just happened across the whole market, so it opens the
-    // page, above the filters: it takes neither the companies nor the topic,
-    // and a block drawn under a filter it ignores looks broken.
-    lead: renderBoard(opts.board ?? null, { ...(opts.keep ?? {}), movers: opts.movers?.period }, opts.indexReturns ?? []),
-    // Under the filters, what is coming for the selected names leads, across
-    // both tracks: it is the question the product exists to answer. The
-    // calendar and the headlines beside it are what is coming and what has
-    // been said.
-    //
-    // Reading order is board, then up next, movers, attention, month, headlines, and that is the
-    // DOM order too -- the two-track layout is grid-area placement on top of
-    // it, so narrow screens, a screen reader and tab order all still get the
-    // single column in the order the page was written.
-    body: `<div class="dash">
+    // Left track: what is coming. Right track: what is being said. The
+    // market-wide board and movers moved to /market -- they take none of
+    // these filters, and a block drawn under a filter it ignores looks broken.
+    body: `<div class="dash"><div class="dash-col">
     ${opts.upcoming ? `<section class="dash-next">${upNext(opts.upcoming, watchlist, todayIso())}</section>` : ""}
-    <section class="dash-movers">${renderMovers(opts.movers ?? null, watchlist, opts.keep ?? {})}</section>
-    <section class="dash-attention">${attentionSection(opts.attention, watchlist)}</section>
     <section class="dash-month">
-    <h2 class="mtitle">${esc(monthLabel(ym))}</h2>
+    ${head(monthLabel(ym), {
+      id: "month",
+      info: info(
+        "i-month",
+        "The month",
+        `<p>${
+          watchlist.length === 1
+            ? `Showing <b>${esc(watchlist[0])}</b> only`
+            : watchlist.length
+              ? `Showing ${watchlist.length} selected companies`
+              : "Every company on record"
+        }${
+          priced
+            ? `, priced against <b>${esc(priced)}</b>${
+                onIndex ? " — the index, not any one of them" : ""
+              }: its close on each trading day, green up, red down, and the deeper the tint the bigger the move.`
+            : "."
+        }</p>
+        <p>Hover a date for what is on it; click to open it beside the grid. Any date from today on
+        also carries a Google Calendar link, so an empty one is somewhere to park your own reminder.</p>
+        <p>Weekend cells are dimmed — IDX does not trade, and an empty weekend is information. On a
+        phone the cells collapse to one dot per class: the grid is the pattern view, Up next is the list.</p>`
+      ),
+      end: priceFilter,
+    })}
     <nav class="pager" aria-label="Month">
       ${step("prev", `/?month=${prev}${w}`, "Previous", monthLabel(prev))}
       ${step("next", `/?month=${next}${w}`, "Next", monthLabel(next))}
     </nav>
-    ${priceFilter}
-    <p class="note">${
-      watchlist.length === 1
-        ? `Showing <b>${esc(watchlist[0])}</b> only`
-        : watchlist.length
-          ? `Showing ${watchlist.length} selected companies`
-          : "Every company on record"
-    }${
-      priced
-        ? `, priced against <b>${esc(priced)}</b>${
-            onIndex ? " — the index, not any one of them" : ""
-          }: its close on each trading day, green up, red down, and the deeper the tint the bigger the move.`
-        : "."
-    }
-      Hover a date for what is on it; click for the full day. Any date from today on
-      also carries a Google Calendar link, so an empty one is somewhere to park your own reminder. On a phone the cells collapse to one dot
-      per class — the grid is the pattern view, the agenda is the product.</p>
     <div class="dow">${dow}</div>
     <div class="grid">${grid}</div>
-    ${legend("Weekend cells dimmed — IDX does not trade, and an empty weekend is information")}
+    ${legend()}
     </section>
+    </div><div class="dash-col">
+    <section class="dash-attention">${attentionSection(opts.attention, watchlist)}</section>
     <section class="dash-headlines">${pulseSection(opts.pulse, watchlist, { month: ym, price: opts.priceSymbol ?? undefined })}</section>
-    </div>`,
+    </div></div>`,
+  });
+}
+
+/**
+ * The market: what the whole exchange just did. Index strip, the board, and
+ * the movers under it.
+ *
+ * Its own view because none of it takes the page filters -- it is the market,
+ * not your names -- and on the agenda it sat over the filter bar and pushed
+ * the question the product exists to answer below the fold. No filter bar
+ * here at all: the board's sector picker and the movers' period switch are the
+ * only controls, and each sits on the block it controls.
+ */
+export function renderMarket(
+  watchlist: string[],
+  opts: {
+    mock: boolean;
+    asOf: string | null;
+    credits: string | null;
+    board: Board | null;
+    movers: Movers | null;
+    indexReturns: IndexReturn[];
+    keep: Record<string, string | undefined>;
+  }
+): string {
+  return page({
+    title: "NewsIDX Market",
+    active: "market",
+    watchlist,
+    mock: opts.mock,
+    asOf: opts.asOf,
+    credits: opts.credits,
+    wide: true,
+    body: `<section class="mk-board">${renderBoard(opts.board, { ...opts.keep, movers: opts.movers?.period }, opts.indexReturns)}</section>
+      <section class="mk-movers">${renderMovers(opts.movers, watchlist, opts.keep)}</section>`,
   });
 }
 
@@ -2619,9 +2559,7 @@ export function renderDay(
     mock: opts.mock,
     asOf: opts.asOf,
     credits: opts.credits,
-    self: "/day",
-    known: opts.known,
-    keep: { date: d.date },
+    filters: filterBar({ action: "/day", watchlist, known: opts.known, keep: { date: d.date } }),
     body: `<p class="kicker">One date · everything on it</p>
       <h2 class="mtitle">${esc(fmtLong(d.date))}</h2>
       <nav class="pager" aria-label="Day">
@@ -2661,24 +2599,13 @@ export function renderDay(
  * say" is one click rather than a scroll.
  */
 function newsSplit(t: Timeline): string {
-  if (!t.news.total) {
-    return `<div class="empty">No headlines on record for this name yet.</div>`;
-  }
-  // Counts only. The topic tags used to be listed again here as links into the
-  // month -- one filter said twice, in two places, doing two different things.
-  // They are the Topic bar at the top of the page now, filtering this page.
-  return `<div class="split">
-      <span class="n pos"><b>${t.news.positive}</b> positive</span>
-      <span class="n neg"><b>${t.news.negative}</b> negative</span>
-      <span class="n"><b>${t.news.neutral}</b> neutral</span>
-      <span class="muted" style="font-size:12px">of ${t.news.total} headline${t.news.total === 1 ? "" : "s"} on record —
-        positive means the provider tagged it Bullish, negative Bearish, neutral neither.
-        ${
-          t.tags.length
-            ? "Narrow the lists below with the Topic filter above."
-            : "No topic tags beyond the sentiment ones on record for this name."
-        }</span>
-    </div>`;
+  if (!t.news.total) return `<span class="co-stat">No headlines on record for this name yet.</span>`;
+  // One line, not three coloured pills: these are the provider's tags on
+  // coverage, so they wear the sentiment glyphs and no price colour.
+  return `<span class="co-stat"><b>${t.news.total}</b> headline${t.news.total === 1 ? "" : "s"} on record ·
+      <span class="bull">▲</span> <b>${t.news.positive}</b> bullish ·
+      <span class="bear">▼</span> <b>${t.news.negative}</b> bearish ·
+      <b>${t.news.neutral}</b> untagged</span>`;
 }
 
 /** The rows a generated claim rests on, as links. Built from records we hold,
@@ -2737,12 +2664,12 @@ function faqSection(t: Timeline, watchlist: string[], faq: FaqView): string {
     : "";
 
   if (faq.error) {
-    return `<p class="kicker">Summary &amp; questions · generated</p>
+    return `${head("Briefing", { sub: "generated" })}
       <div class="empty">Could not generate: ${esc(faq.error)}</div>
       ${control}`;
   }
   if (!faq.row) {
-    return `<p class="kicker">Summary &amp; questions · generated</p>
+    return `${head("Briefing", { sub: "generated" })}
       <div class="empty">${
         faq.available
           ? "Nothing generated for this company yet. Write a summary and five questions from the rows on this page."
@@ -2751,7 +2678,7 @@ function faqSection(t: Timeline, watchlist: string[], faq: FaqView): string {
       ${control}`;
   }
 
-  return `<p class="kicker">News summary · generated</p>
+  return `${head("News summary", { sub: "generated" })}
     ${
       faq.row.summary.length
         ? `<div class="brief">${faq.row.summary
@@ -2882,41 +2809,38 @@ export function renderTicker(
   const shown = t.behind.filter((i) => i.kind === "news" && matchesTag(i, tag)).length;
 
   return page({
-    title: "NewsIDX Agenda",
+    title: `NewsIDX ${t.symbol}`,
     active: "ticker",
     watchlist,
     mock: opts.mock,
     asOf: opts.asOf,
     credits: opts.credits,
-    self: "/ticker",
-    known: opts.known,
-    // No `symbol` here on purpose: the filter above must be able to change
-    // which company this page is about, and a kept symbol would outrank it.
-    keep: { tag: tag || undefined },
-    filters: tagBar({
+    wide: true,
+    filters: filterBar({
       action: "/ticker",
-      tag,
+      watchlist,
+      known: opts.known,
+      company: t.symbol,
       topics: t.tags,
-      hidden: { symbol: t.symbol, w: watchlist.join(",") || undefined },
+      tag,
       count: tag
-        ? `${shown} headline${shown === 1 ? "" : "s"} tagged \u201c${tag}\u201d`
+        ? `${shown} headline${shown === 1 ? "" : "s"} tagged ${tagPhrase(tag)}`
         : `${t.tags.length} tag${t.tags.length === 1 ? "" : "s"} on record`,
     }),
-    body: `<p class="kicker">One company · past and ahead</p>
-      <div class="mhead"><h2 class="mono">${esc(t.symbol)}</h2></div>
+    // Main track: the record, ahead then behind. Side track: the generated
+    // briefing and the ask box -- derived from the record, so beside it,
+    // never above it. One column on a phone, in that order.
+    body: `<div class="co-head"><h1>${esc(t.symbol)}</h1>${newsSplit(t)}</div>
       ${
         watchlist.length > 1
-          ? `<p class="note">Showing <b>${esc(t.symbol)}</b>, the first of your ${watchlist.length} selected companies —
-             ${watchlist
-               .filter((s) => s !== t.symbol)
-               .map((s) => `<a class="tickerlink" href="/ticker?symbol=${esc(s)}&w=${esc(watchlist.join(","))}">${esc(s)}</a>`)
-               .join(" · ")}</p>`
+          ? `<p class="note">Your other companies: ${watchlist
+              .filter((s) => s !== t.symbol)
+              .map((s) => `<a class="tickerlink" href="/ticker?symbol=${esc(s)}&w=${esc(watchlist.join(","))}">${esc(s)}</a>`)
+              .join(" · ")}</p>`
           : ""
       }
-      <p class="kicker">How this name's news was tagged</p>
-      ${newsSplit(t)}
-      ${faqSection(t, watchlist, opts.faq)}
-      <p class="kicker">Ahead</p>
+      <div class="dash"><section class="dash-col">
+      ${head("Ahead")}
       ${
         ahead.length
           ? `<div class="rows">${ahead.map((i) => chip(i, watchlist)).join("")}</div>`
@@ -2930,6 +2854,9 @@ export function renderTicker(
              ${pager("/ticker", { symbol: t.symbol, w: watchlist.join(",") || undefined, tag: tag || undefined }, behind)}`
           : `<div class="empty">No facts on record for this name yet.</div>`
       }
-      ${legend()}`,
+      ${legend()}
+      </section>
+      <section class="dash-col">${faqSection(t, watchlist, opts.faq)}</section>
+      </div>`,
   });
 }

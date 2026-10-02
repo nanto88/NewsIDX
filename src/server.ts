@@ -43,7 +43,7 @@ import {
 import { ensureTicker, fillBoard, fillMovers, fillPrices } from "./backfill.js";
 import { board, indexReturns, movers } from "./heatmap.js";
 import { askFaq, ensureFaq, fingerprint, MAX_QUESTION } from "./faq.js";
-import { renderDay, renderMonth, renderTicker, type FaqView, upNextCsv } from "./render.js";
+import { renderDay, renderMarket, renderMonth, renderTicker, type FaqView, upNextCsv } from "./render.js";
 
 const con = connect();
 
@@ -231,8 +231,6 @@ const renderAgendaPage = async (req: any, reply: any) => {
   const q = req.query as any;
   const w = watchlistFrom(q);
   await fill(w);
-  await fillBoardToday();
-  await fillMoversToday();
   const today = runToday();
   const ym = /^\d{4}-\d{2}$/.test(String(q.month ?? "")) ? String(q.month) : today.slice(0, 7);
   // A price strip needs one subject. `?price=` is the reader's choice from the
@@ -260,17 +258,15 @@ const renderAgendaPage = async (req: any, reply: any) => {
   // ticking a second box shows more, not less. The cap is generous enough for
   // MAX_TAGS long labels and small enough that the URL is not a payload;
   // parseTags() enforces the real limit on how many survive.
-  // Every block UNDER the filters takes it -- movers, attention, grid and
-  // headlines -- because a filtered list beside three unfiltered ones is four
-  // answers to the same question. The board sits above the filters and takes
-  // none of them.
+  // Every block on the agenda takes it -- attention, grid and headlines --
+  // because a filtered list beside two unfiltered ones is three answers to the
+  // same question. Repeated `tag` params (the bar's checkboxes) arrive as an
+  // array, which String() joins with the same comma.
   const tag = String(q.tag ?? "").slice(0, TAG_QUERY_MAX);
   // `?who=` narrows the headline list to one company, and only that list.
   // Normalised through the same parser as the companies bar, so it is a
   // ticker or it is nothing.
   const who = parseWatchlist(q.who)[0] ?? "";
-  // `?movers=` is one of the five period names or it is the default.
-  const moverPeriod = parseMoverPeriod(q.movers);
   const pulseTo = monthEnd < today ? shift(monthEnd, -1) : today;
   return renderMonth(month(con, ym, today, { symbols: w, index, priceSymbol, tag }), ym, w, {
     ...shellOpts(),
@@ -283,35 +279,38 @@ const renderAgendaPage = async (req: any, reply: any) => {
     upcoming: upcoming(con, w, today),
     attention: needsAttention(con, { from: monthStart, to: pulseTo, today, watchlist: w, tag }),
     pulse: pulseOver(con, monthStart, pulseTo, w, tag, pageFrom(q), who),
-    // The board is market-wide on purpose and takes no filter at all -- not
-    // the watchlist, not the topic. It sits above both on the page, and a
-    // board thinned by a topic its position says it ignores is a board that
-    // looks broken.
-    // `?sector=` narrows the board and only the board -- its own picker, not
-    // a page filter. board() matches it against the sectors actually drawn.
-    board: board(con, runToday(), "", String(q.sector ?? "").slice(0, 60)),
-    // A database read: the backfill buys the closes, this only divides them.
-    indexReturns: indices
-      .map((i) => indexReturns(con, i.symbol, i.label, runToday()))
-      .filter((x): x is NonNullable<typeof x> => x !== null),
-    // `?movers=` picks the period. Every one of them is already in the
-    // database -- they arrived in the same call -- so this switch is free.
-    movers: movers(con, runToday(), moverPeriod, tag),
-    // What the period switcher must carry so changing it does not drop the
-    // month, the companies, the price subject or the topic.
-    keep: {
-      month: ym,
-      w: w.join(",") || undefined,
-      price: priceSymbol ?? undefined,
-      tag: tag || undefined,
-      who: who || undefined,
-      sector: String(q.sector ?? "").slice(0, 60) || undefined,
-    },
   });
 };
 
 app.get("/", renderAgendaPage);
 app.get("/month", renderAgendaPage);
+
+/**
+ * The market: index strip, board and movers. Market-wide on purpose, so it
+ * takes no page filter -- not the watchlist, not the topic. `?sector=` narrows
+ * the board and `?movers=` picks the period; both are the block's own control.
+ */
+app.get("/market", async (req, reply) => {
+  const q = req.query as any;
+  const w = watchlistFrom(q);
+  await fillBoardToday();
+  await fillMoversToday();
+  const today = runToday();
+  const sector = String(q.sector ?? "").slice(0, 60);
+  reply.type("text/html; charset=utf-8");
+  return renderMarket(w, {
+    ...shellOpts(),
+    board: board(con, today, "", sector),
+    // A database read: the backfill buys the closes, this only divides them.
+    indexReturns: indexChoices()
+      .map((i) => indexReturns(con, i.symbol, i.label, today))
+      .filter((x): x is NonNullable<typeof x> => x !== null),
+    // Every period is already in the database -- they arrived in one call --
+    // so this switch is free.
+    movers: movers(con, today, parseMoverPeriod(q.movers), ""),
+    keep: { w: w.join(",") || undefined, sector: sector || undefined },
+  });
+});
 
 // Read-only: no fill, so a download can never spend a credit.
 app.get("/upnext.csv", async (req, reply) => {
@@ -334,10 +333,11 @@ app.get("/day", async (req, reply) => {
 app.get("/ticker", async (req, reply) => {
   const q = req.query as any;
   const w = watchlistFrom(q);
-  // One company page needs one company. The filter picks it when it names a
-  // single one; ?symbol= addresses it directly from a link anywhere else.
+  // One company page needs one company: ?symbol= (the page's own picker, or a
+  // link from anywhere else), then the first of the selected companies.
   const symbol =
-    (w.length === 1 ? w[0] : (parseWatchlist(q.symbol)[0] ?? w[0])) ??
+    parseWatchlist(q.symbol)[0] ??
+    w[0] ??
     defaultWatchlist()[0] ??
     allSymbols(con)[0] ??
     "BBCA";
