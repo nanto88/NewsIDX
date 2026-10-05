@@ -50,7 +50,7 @@ get wrong out loud: *holders are not losing 4.3%, they are receiving it.*
 The basis and the close itself are printed beside the percentage: a number is only checkable
 if its denominator is on the page.
 
-Code: `expectedDrop()` in `src/predict.ts`.
+Code: `expectedDrop()` in `src/dividend.ts`.
 
 ## 3. The event cluster
 
@@ -61,50 +61,22 @@ companies** from the watchlist. Two is a coincidence.
 
 Code: `clusterOf()` in `src/calendar.ts`.
 
-## 4. The predicted window — a date range, never a date
+## 4. No predicted dates
 
-**What it says:** "27 Nov – 9 Dec · Right 2 of the last 3 times". The fit detail (how
-many occurrences, how it was scored) sits behind a "How we worked this out" disclosure on
-the chip — present, but not in front of the answer.
+Every date ahead of today on the page is one the issuer published. Nothing is fitted from a
+company's history.
 
-Only for events that recur on their own annual rhythm: ex-dividend dates and general
-meetings, both from `corporate-actions`.
+We tried: an annual-rhythm fit for ex-dividend dates and general meetings, scored
+walk-forward. On real data it drew 2 windows across 332 companies (only 4 had enough
+corporate-action history), at 5 of 8 out of sample. Too little reach for a third chip shape,
+so it was removed.
 
-1. **Split the history into seasons.** A gap of more than 45 days in day-of-year starts a
-   new one, wrapping at New Year. BBCA pays a final in March and an interim in November —
-   two rhythms, not one. Without this step nearly everything is refused.
-2. **Keep the most recent 6** dates of each season. Issuers drift.
-3. **Fit:** the **median** day-of-year is the centre, the **median absolute deviation** is
-   the spread. The window is centre ± 1.5 × spread, clamped to 2–7 days either side.
-4. **Score it walk-forward:** predict each past occurrence using *only* the occurrences
-   before it, and count how many landed inside. That is the percentage shown. Under two
-   testable occurrences it shows "no hit rate yet" instead of a number.
-
-### When it refuses to draw one
-
-A refusal is a result, and it is shown with its reason:
-
-| Refusal | Why |
-|---|---|
-| Fewer than 3 past occurrences | Not a rhythm yet |
-| Spread wider than 10 days | The dates move too much to call a window |
-| Zero hits over 2+ walk-forward trials | The fit is refuted by its own history — a drifting date, not a rhythm |
-| Quarterly reports | Never fitted at all — see below |
-
-Code: `seasons()`, `fitAnnualRhythm()` in `src/predict.ts`; thresholds in `src/config.ts`.
-
-### Why there is no earnings-date prediction
-
-`get_quarterly_financial_dates` looks like a history of filing dates. It is not: the values
-are **period keys** — each date is its own quarter end (`2026-03-31` for Q1), fed back into
-the quarterly-financials endpoint. Measured on live data across 7 years of BBCA history:
-every lag between a returned date and its quarter end was **zero**.
-
-So there is no filing rhythm in that feed to fit, and none is fitted: `PREDICTABLE` in
-`calendar.ts` lists exactly two kinds, ex-dividends and general meetings, and `report` is
-not one of them. Every report chip carries the reason in its own text — *"the feed carries
-the period (quarter end), not the date this was filed"* — with the date we first saw the
-row, which is the only timing fact we hold about it.
+Earnings dates were never a candidate. `get_quarterly_financial_dates` looks like a history
+of filing dates, but the values are **period keys** — each date is its own quarter end
+(`2026-03-31` for Q1). Measured on live data across 7 years of BBCA history: every lag
+between a returned date and its quarter end was **zero**. Every report chip carries the
+reason in its own text — *"the feed carries the period (quarter end), not the date this was
+filed"* — with the date we first saw the row, which is the only timing fact we hold about it.
 
 ## 5. The daily close on the calendar
 
@@ -185,16 +157,7 @@ A story appears only if **two or more sources carried it**, or it **lands within
 ### Near a dated event
 
 For a story ending on date *d* and a company *S*, the nearest event at or after *d* and within
-14 days:
-
-- **Scheduled** rows come from `event` — a date the issuer published.
-- **Predicted** windows come from `predictionsFor()`, which already skips any kind the issuer
-  has dated ahead, so one name can never carry both for the same kind. `days` is measured to
-  the **start of the window**, and a window already open counts as 0.
-- On a tie the published date wins, because a window is the weaker claim.
-
-A predicted row is never printed as a date. It reads *"inside its predicted ex-dividend
-window · 18–25 Sep"*, never *"7 days before its ex-dividend"*.
+14 days. Only **scheduled** rows count: a date the issuer published, from `event`.
 
 ### The components
 
@@ -233,21 +196,20 @@ weighting itself is not.
 
 Code: `needsAttention()` and `nearestEvent()` in `src/attention.ts`.
 
-## The three classes on a chip
+## The two classes on a chip
 
 | Class | Means | Shape |
 |---|---|---|
 | **Fact** | It happened; official record linked | Solid |
 | **Scheduled** | The issuer published the date | Solid, cyan left rule |
-| **Predicted** | We computed it | Dashed outline, a range, plus the hit rate |
 
-Three shapes, not three colours — colour alone fails colour-blind readers and a compressed
+Two shapes, not two colours — colour alone fails colour-blind readers and a compressed
 video.
 
 ## What this product will not do
 
 - Say **why** a price moved. News is context; `/v2/news/` carries no causal claim.
-- Give a single predicted date, or widen a window to look confident.
+- Show a date ahead of today that the issuer did not publish.
 - Report a percentage without the count behind it.
 - Imply coverage of macroeconomic events. Sectors holds no rate, CPI or GDP data, and the
   UI never suggests otherwise.

@@ -1,10 +1,9 @@
 /**
  * View models. plan.md §4a.
  *
- * Facts and scheduled events both live in `event`. Predicted windows do not:
- * they are fitted here, at read time, from the same rows (plan.md §5). Nothing
- * derived is ever written to the database, so there is no row anywhere in this
- * product that a company did not date or a source did not publish.
+ * Facts and scheduled events both live in `event`. Nothing derived is ever
+ * written to the database, so there is no row anywhere in this product that a
+ * company did not date or a source did not publish.
  *
  * Nothing in this file talks to the API, so every route is a SQLite read.
  */
@@ -18,18 +17,10 @@ import {
   eventsOn,
   lastClose,
   pricesInRange,
-  symbolsWithHistory,
 } from "./db.js";
-import {
-  type Drop,
-  type Fit,
-  expectedDrop,
-  fitAnnualRhythm,
-  seasons,
-} from "./predict.js";
+import { type Drop, expectedDrop } from "./dividend.js";
 import {
   daysInMonth,
-  fmtRange,
   fmtShort,
   fmtWithDay,
   isWeekend,
@@ -39,12 +30,9 @@ import {
 } from "./dates.js";
 import { HORIZON_DAYS } from "./config.js";
 
-/**
- * The three classes on a chip. `predicted` exists only in a view model --
- * db.ts knows two, and that asymmetry is the honesty rule made structural:
- * nothing we computed can ever be mistaken for something we were told.
- */
-export type ViewClass = EventClass | "predicted";
+/** Fact or scheduled: we only ever show what a company dated or a source
+ * published. */
+export type ViewClass = EventClass;
 
 export interface Item {
   cls: ViewClass;
@@ -57,12 +45,6 @@ export interface Item {
   /** The tags Sectors put on the story. The only categorisation on the page. */
   tags?: string[] | null;
   tagCounts?: Record<string, number> | null;
-  /** Predicted rows only: the window, which is what renders instead of `date`.
-   * `date` stays set so one sort and one bucketing rule cover all three
-   * classes, but it is never shown for a predicted row. */
-  window?: { from: string; to: string } | null;
-  /** Predicted rows only: how the window was fitted and how it scored. */
-  fit?: Fit | null;
   /** Scheduled ex-dividend rows only: the mechanical drop. */
   drop?: Drop | null;
 }
@@ -165,73 +147,6 @@ export function toItem(c: Chip): Item {
     // the drop, not something a chip renders on its own.
     ...(typeof c.extra?.amount === "number" ? { amount: c.extra.amount } : {}),
   } as Item;
-}
-
-// ------------------------------------------------- the derived layer
-
-/** The kinds that recur on an annual rhythm of the company's own making.
- * Quarterly reports are deliberately not here: the dates that feed look
- * like filings are period keys, so there is no rhythm in them to fit
- * (METHODOLOGY.md §4). */
-const PREDICTABLE: Record<string, string> = {
-  exdiv: "Cash dividend · ex-date",
-  agm: "General meeting",
-};
-
-/** A window we would not draw, with the reason we would not draw it. Shown,
- * never swallowed: a refusal is a result (METHODOLOGY.md §4). */
-export interface Refusal {
-  kind: string;
-  reason: string;
-}
-
-/**
- * Fit this company's recurring events to windows ahead of `today`.
- *
- * A kind the issuer has already dated ahead is skipped entirely -- there is a
- * scheduled chip for it, and predicting over a published date would be the
- * one thing this product promises not to do.
- */
-export function predictionsFor(
-  con: Database,
-  symbol: string,
-  today: string,
-  horizonTo: string
-): { items: Item[]; refusals: Refusal[] } {
-  const rows = eventsForSymbol(con, symbol);
-  const items: Item[] = [];
-  const refusals: Refusal[] = [];
-
-  for (const [kind, title] of Object.entries(PREDICTABLE)) {
-    const ofKind = rows.filter((r) => r.kind === kind);
-    if (!ofKind.length) continue;
-    if (ofKind.some((r) => r.date >= today)) continue; // the issuer dated it
-
-    const history = ofKind.map((r) => r.date);
-    for (const season of seasons(history)) {
-      const res = fitAnnualRhythm(season, today);
-      if (!res.ok) {
-        refusals.push({ kind, reason: res.reason });
-        continue;
-      }
-      const { fit } = res;
-      if (fit.from > horizonTo) continue; // real, just beyond the horizon
-      items.push({
-        cls: "predicted",
-        kind,
-        symbol,
-        // Sort and bucket on the window's start, never before today: a window
-        // already open belongs at the top of the agenda, not behind it.
-        date: fit.from < today ? today : fit.from,
-        window: { from: fit.from, to: fit.to },
-        fit,
-        title,
-        detail: null,
-        sourceUrl: null,
-      });
-    }
-  }
-  return { items, refusals };
 }
 
 /**
@@ -467,27 +382,16 @@ export function pulseOver(
 // ---------------------------------------------------------------- up next
 
 /**
- * Everything ahead for the selected names across the horizon, dated first
- * on a tie: the list the agenda page opens with.
- *
- * Predicted windows only for a named selection. With no companies picked the
- * list is the market's dated events alone -- fitting a rhythm for every
- * issuer on record to fill a list nobody asked to be about them is work for
- * no reader.
+ * Everything the issuers have dated ahead for the selected names across the
+ * horizon: the list the agenda page opens with.
  */
 export function upcoming(con: Database, symbols: string[], today: string): Item[] {
   const to = shift(today, HORIZON_DAYS);
-  const dated = attachDrops(
+  return attachDrops(
     con,
     eventsInRange(con, today, to, symbols).filter((r) => r.class === "scheduled").map(toItem),
     today
-  );
-  const pred = symbols.flatMap((s) => predictionsFor(con, s, today, to).items);
-  return [...dated, ...pred].sort(
-    (a, b) =>
-      (a.date ?? "").localeCompare(b.date ?? "") ||
-      Number(a.cls === "predicted") - Number(b.cls === "predicted")
-  );
+  ).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
 }
 
 // ---------------------------------------------------------------- one date
@@ -525,16 +429,74 @@ export interface Timeline {
    * those two are the sentiment, and repeating them as topics would double-
    * count the same label in two places on one page. */
   tags: { label: string; n: number }[];
-  /** Windows we would not draw for this name, each with its reason. */
-  refusals: Refusal[];
 }
 
 /** Bullish and Bearish are read as sentiment, so they are not topics. */
 const SENTIMENT_TAG = /^(bullish|bearish)$/i;
 
+// ---------------------------------------------------------------- the price chart
+
+export interface ChartMark {
+  date: string;
+  /** The close the line is at on this date (the last one on or before it), so
+   * the marker sits on the line rather than floating beside it. */
+  close: number;
+  news: Item[];
+  /** Filings, suspensions, dividends, meetings: everything that is not news. */
+  record: Item[];
+}
+
+export interface Chart {
+  symbol: string;
+  from: string;
+  to: string;
+  points: { date: string; close: number }[];
+  marks: ChartMark[];
+}
+
+/**
+ * One company's closes over the last `days`, with the dates its news and
+ * filings landed on. A database read only: it never spends.
+ *
+ * The topic narrows NEWS exactly as it does on the list. With no closes held
+ * there is no line to hang a marker on, so `marks` is empty rather than drawn
+ * on an invented axis.
+ */
+export function chartFor(
+  con: Database,
+  symbol: string,
+  today: string,
+  tag = "",
+  days: number = HORIZON_DAYS
+): Chart {
+  const from = shift(today, -days);
+  const points = [...pricesInRange(con, symbol, from, today).values()].map((p) => ({
+    date: p.date,
+    close: p.close,
+  }));
+  if (!points.length) return { symbol, from, to: today, points, marks: [] };
+
+  const start = points[0].date;
+  const at = (d: string) => [...points].reverse().find((p) => p.date <= d)?.close ?? points[0].close;
+  const byDate = new Map<string, ChartMark>();
+  for (const r of eventsForSymbol(con, symbol).map(toItem)) {
+    if (!r.date || r.date < start || r.date > today) continue;
+    if (r.kind === "news" && !matchesTag(r, tag)) continue;
+    const m = byDate.get(r.date) ?? { date: r.date, close: at(r.date), news: [], record: [] };
+    (r.kind === "news" ? m.news : m.record).push(r);
+    byDate.set(r.date, m);
+  }
+  return {
+    symbol,
+    from: start,
+    to: today,
+    points,
+    marks: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+  };
+}
+
 export function timeline(con: Database, symbol: string, today: string): Timeline {
   const rows = attachDrops(con, eventsForSymbol(con, symbol).map(toItem), today);
-  const pred = predictionsFor(con, symbol, today, shift(today, HORIZON_DAYS));
   const news = rows.filter((r) => r.kind === "news");
 
   const tagCount = new Map<string, number>();
@@ -547,11 +509,9 @@ export function timeline(con: Database, symbol: string, today: string): Timeline
 
   return {
     symbol,
-    ahead: [...rows.filter((r) => r.date! >= today && r.cls === "scheduled"), ...pred.items].sort(
-      (a, b) =>
-        (a.date ?? "").localeCompare(b.date ?? "") ||
-        Number(a.cls === "predicted") - Number(b.cls === "predicted")
-    ),
+    ahead: rows
+      .filter((r) => r.date! >= today && r.cls === "scheduled")
+      .sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "")),
     // The whole history: the page decides how much of it to show (render.ts
     // pages at ten), and a hard slice here would silently hide years.
     behind: rows.filter((r) => r.date! < today),
@@ -564,8 +524,5 @@ export function timeline(con: Database, symbol: string, today: string): Timeline
     tags: [...tagCount.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
       .map(([label, n]) => ({ label, n })),
-    refusals: pred.refusals,
   };
 }
-
-export { fmtRange };

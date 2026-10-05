@@ -12,6 +12,7 @@ import { test } from "node:test";
 import { EQUITY_BANDS, INDEX_BANDS } from "./config.js";
 import { chip, domainOf, filterBar, renderDay, renderMarket, upNext, upNextCsv, esc, gcalUrl, page, paginate, pct, priceBand, renderBoard, renderMonth, renderMovers, renderTicker, sentClass, STYLE, tagPhrase } from "./render.js";
 import type { Cell, Item } from "./calendar.js";
+import { today as todayIso } from "./dates.js";
 import type { Board, Mover, Movers, Tile } from "./heatmap.js";
 
 /** An empty ranking: these tests are about the month chrome, and a populated
@@ -203,10 +204,10 @@ test("a list pages at ten, and the last page is short rather than padded", () =>
   assert.equal(paginate([], 1).pages, 1, "an empty list is one empty page, not zero");
 });
 
-test("the ticker history pages, and page two shows the older rows", () => {
+test("the ticker news pages, and page two shows the older rows", () => {
   const behind = Array.from({ length: 14 }, (_, i) => ({
     cls: "fact" as const,
-    kind: "exdiv",
+    kind: "news",
     symbol: "BBCA",
     date: `20${25 - i}-03-15`,
     title: `Cash dividend ${i}`,
@@ -214,14 +215,13 @@ test("the ticker history pages, and page two shows the older rows", () => {
   const t = {
     symbol: "BBCA",
     ahead: [],
-    refusals: [],
     behind,
     news: { positive: 0, negative: 0, neutral: 0, total: 0 },
     tags: [],
   };
   const noFaq = { row: null, stale: false, available: false, rows: behind.length, model: "fixtures", asked: [] };
   const p1 = renderTicker(t, ["BBCA"], { mock: false, asOf: null, credits: null, faq: noFaq });
-  assert.match(p1, /Behind · 14/);
+  assert.match(p1, /News · 14/);
   assert.match(p1, /1–10<\/b> of 14 rows/);
   assert.match(p1, /page 1 of 2/);
   assert.match(p1, /Cash dividend 0/);
@@ -238,11 +238,10 @@ test("the ticker history pages, and page two shows the older rows", () => {
   assert.ok(!p2.includes("Cash dividend 0<"), "page two drops the newest rows");
 });
 
-test("the topic filter narrows the company's news and leaves its dated actions alone", () => {
+test("the topic filter narrows the news list, and the filings list says it is not filtered", () => {
   const t = {
     symbol: "BBCA",
     ahead: [],
-    refusals: [],
     behind: [
       { date: "2026-09-09", symbol: "BBCA", kind: "news", cls: "fact", title: "BBCA raises its dividend", tags: ["Dividend"] },
       { date: "2026-09-08", symbol: "BBCA", kind: "news", cls: "fact", title: "BBCA opens a branch", tags: ["Business Expansion"] },
@@ -254,21 +253,91 @@ test("the topic filter narrows the company's news and leaves its dated actions a
   const opts = { mock: false, asOf: null, credits: null, faq: { row: null, stale: false, available: false, rows: 3, model: "fixtures", asked: [] } };
 
   const all = renderTicker(t as any, [], opts);
-  assert.match(all, /Behind · 3/);
+  assert.match(all, /News · 2/);
+  assert.match(all, /Filings &amp; corporate actions · 1/);
 
   const div = renderTicker(t as any, [], { ...opts, tag: "Dividend" });
   assert.match(div, /BBCA raises its dividend/);
   assert.ok(!div.includes("BBCA opens a branch"), "the other topic's headline is gone");
   assert.match(div, /Director sells shares/, "a filing carries no tags and is not swept away with them");
-  assert.match(div, /Behind · 2/);
+  assert.match(div, /not filtered by topic/);
+  assert.match(div, /News · 1/);
   assert.match(div, /1 headline tagged \u201cDividend\u201d/, "the bar says what it did, in this page's terms");
+  const amp = renderTicker(t as any, [], { ...opts, tag: "Politics & Regulation" });
+  assert.ok(!amp.includes("&amp;amp;"), "a topic with an ampersand is escaped once, not twice");
+});
+
+test("paging months keeps the chosen price subject, and not a fallback", () => {
+  const base = { mock: false, asOf: null, credits: null, pulse: { from: "", to: "", tag: "", who: "", headlines: [], total: 0, page: 1, pages: 1, offset: 0, topics: [], tickers: [] }, attention: { rows: [], considered: 0 } } as any;
+  const chosen = renderMonth([], "2026-09", ["BBCA"], { ...base, priceSymbol: "BBCA" });
+  assert.match(chosen, /href="\/\?month=2026-10&amp;w=BBCA&amp;price=BBCA"/);
+  const fallback = renderMonth([], "2026-09", ["BBCA"], { ...base, priceSymbol: "ADRO", priceNote: "No closes on record for IHSG" });
+  assert.match(fallback, /href="\/\?month=2026-10&amp;w=BBCA"/, "a server fallback is not carried forward as the reader's pick");
+});
+
+test("the ticker page folds each list, and switches between a list and a month grid", () => {
+  const t = {
+    symbol: "BBCA",
+    ahead: [],
+    behind: [
+      { date: "2026-09-09", symbol: "BBCA", kind: "news", cls: "fact", title: "BBCA raises its dividend", tags: ["Dividend"] },
+      { date: "2026-09-07", symbol: "BBCA", kind: "filing", cls: "fact", title: "Director sells shares" },
+    ],
+    news: { positive: 0, negative: 0, neutral: 1, total: 1 },
+    tags: [{ label: "Dividend", n: 1 }],
+  };
+  const opts = { mock: false, asOf: null, credits: null, faq: { row: null, stale: false, available: false, rows: 2, model: "fixtures", asked: [] } };
+
+  const list = renderTicker(t as any, ["BBCA"], { ...opts, tag: "Dividend" });
+  assert.equal((list.match(/<details class="fold" open>/g) ?? []).length, 2, "filings and news each fold, open by default");
+  assert.match(list, /<a href="\/ticker\?symbol=BBCA&amp;w=BBCA&amp;tag=Dividend&amp;view=calendar&amp;month=\d{4}-\d{2}">Calendar<\/a>/,
+    "the switch keeps the company, the selection and the topic");
+  assert.match(list, /aria-current="page">List</);
+  assert.ok(!list.includes('class="grid"'), "a list draws no grid");
+
+  const cells: Cell[] = Array.from({ length: 35 }, (_, i) => ({
+    date: `2026-08-${String(31 + i - 30).padStart(2, "0")}`.replace(/^2026-08-(3[2-9]|[4-9]\d)$/, "2026-09-01"),
+    day: i + 1, inMonth: true, weekend: false, today: false, marks: [], overflow: 0, items: [], total: 0,
+  }));
+  const cal = renderTicker(t as any, ["BBCA"], { ...opts, view: "calendar", month: "2026-09", cells });
+  assert.match(cal, /class="grid"/);
+  assert.match(cal, /September 2026/);
+  assert.match(cal, /aria-current="page">Calendar</);
+  assert.match(cal, /href="\/ticker\?symbol=BBCA&amp;w=BBCA&amp;view=calendar&amp;month=2026-10"/, "next month keeps the layout");
+  assert.ok(!cal.includes("Filings &amp; corporate actions"), "the calendar replaces the two lists");
+});
+
+test("the chart view hangs news and filings on the price line, as links with a hint each", () => {
+  const t = { symbol: "BBCA", ahead: [], behind: [], news: { positive: 0, negative: 0, neutral: 0, total: 0 }, tags: [] };
+  const opts = { mock: false, asOf: null, credits: null, faq: { row: null, stale: false, available: false, rows: 0, model: "fixtures", asked: [] } };
+  const chart = {
+    symbol: "BBCA", from: "2026-09-01", to: "2026-09-11",
+    points: [{ date: "2026-09-01", close: 9000 }, { date: "2026-09-04", close: 9500 }, { date: "2026-09-10", close: 9200 }],
+    marks: [
+      { date: "2026-09-04", close: 9500,
+        news: [{ cls: "fact", kind: "news", symbol: "BBCA", date: "2026-09-04", title: "BBCA raises its dividend" }],
+        record: [{ cls: "fact", kind: "filing", symbol: "BBCA", date: "2026-09-04", title: "Director sells shares" }] },
+    ],
+  } as any;
+  const html = renderTicker(t as any, ["BBCA"], { ...opts, view: "chart", chart });
+  assert.match(html, /aria-current="page">Chart</);
+  assert.match(html, /<polyline class="ln"/);
+  assert.match(html, /class="mk news[^"]*"/);
+  assert.match(html, /class="mk rec[^"]*"/);
+  assert.match(html, /href="\/day\?date=2026-09-04&amp;w=BBCA"/, "a marker opens that day, for this company");
+  assert.match(html, /BBCA raises its dividend/);
+  assert.match(html, /Director sells shares/);
+  assert.match(html, /id="mk-news" checked/, "each marker kind can be switched off");
+  assert.ok(!html.includes("Filings &amp; corporate actions"), "the chart replaces the two lists");
+
+  const empty = renderTicker(t as any, ["BBCA"], { ...opts, view: "chart", chart: { ...chart, points: [], marks: [] } });
+  assert.match(empty, /No closes on record for BBCA/);
 });
 
 test("the FAQ button is a POST, and is dead when generation is unavailable", () => {
   const t = {
     symbol: "BBCA",
     ahead: [],
-    refusals: [],
     behind: [],
     news: { positive: 3, negative: 1, neutral: 0, total: 4 },
     tags: [{ label: "Dividend", n: 2 }],
@@ -708,7 +777,7 @@ test("the dashboard is one column until there is room for two, and reads in orde
   // width: the filters, then what is coming (up next, the month), then what
   // is being said (attention, headlines).
   // Matched on the class attribute: the bare names also occur in the <style>.
-  const order = ["fbar", "dash-next", "dash-month", "dash-attention", "dash-headlines"].map((c) =>
+  const order = ["fbar", "dash-next", "dash-month", "dash-feed"].map((c) =>
     agenda.indexOf(`class="${c}"`)
   );
   assert.deepEqual(order, [...order].sort((a, b) => a - b), "DOM order is the reading order");
@@ -839,37 +908,28 @@ test("only the board pans sideways on a phone, never the whole page", () => {
 
 // ---------------------------------------------------------------- up next
 
-test("up next counts dated and predicted apart, and names the holdings with nothing ahead", () => {
+test("up next counts what is dated, and names the holdings with nothing ahead", () => {
   const today = "2026-09-11";
   const items = [
     { cls: "scheduled", kind: "agm", symbol: "BMRI", date: "2026-09-16", title: "General meeting" },
     { cls: "scheduled", kind: "exdiv", symbol: "TLKM", date: "2026-09-23", title: "Cash dividend",
       drop: { pct: -0.043, basis: "dividend ÷ last close", close: 2710 } },
-    { cls: "predicted", kind: "agm", symbol: "BBCA", date: "2026-09-14", title: "General meeting",
-      window: { from: "2026-09-14", to: "2026-09-28" }, fit: { from: "2026-09-14", to: "2026-09-28", n: 4, spreadDays: 3, trials: 3, hits: 2 } },
   ] as unknown as Item[];
-  const html = upNext(items, ["BMRI", "TLKM", "BBCA", "ASII"], today);
-  assert.match(html, /Next 7 days<\/div><div class="v">2<\/div>\s*<div class="s">1 dated · 1 predicted/);
+  const html = upNext(items, ["BMRI", "TLKM", "ASII"], today);
+  assert.match(html, /Next 7 days<\/div><div class="v">1<\/div>/);
   assert.match(html, /largest drop −4\.3% · TLKM/);
   assert.match(html, /Nothing on the calendar for <b>ASII<\/b>/);
-  // A predicted row prints a window, never a date.
-  assert.ok(!/Mon 14 Sep/.test(html), "the predicted row carries no single date");
-  assert.match(html, /<i class="sw p"><\/i>Predicted · right 2 of the last 3 times/);
 });
 
 test("the CSV export carries the same rows, and cannot smuggle a formula into a spreadsheet", () => {
   const items = [
     { cls: "scheduled", kind: "exdiv", symbol: "TLKM", date: "2026-09-23", title: "=HYPERLINK(\"x\",\"y\")",
       drop: { pct: -0.043, basis: "dividend ÷ last close", close: 2710 } },
-    { cls: "predicted", kind: "agm", symbol: "BBCA", date: "2026-09-14", title: "General meeting",
-      window: { from: "2026-09-14", to: "2026-09-28" }, fit: { from: "2026-09-14", to: "2026-09-28", n: 4, spreadDays: 3, trials: 3, hits: 2 } },
   ] as unknown as Item[];
   const lines = upNextCsv(items, "2026-09-11").trim().split("\r\n");
-  assert.equal(lines.length, 3);
-  assert.match(lines[0], /^date,window_from,window_to,days_to_go,ticker/);
-  assert.match(lines[1], /^2026-09-23,,,12,TLKM,Ex-dividend,"'=HYPERLINK\(""x"",""y""\)",dated by issuer,,-4\.3,2710,$/);
-  // A predicted row has a window and no date, here as on the page.
-  assert.match(lines[2], /^,2026-09-14,2026-09-28,3,BBCA,General meeting,General meeting,predicted,2\/3,,,$/);
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /^date,days_to_go,ticker/);
+  assert.match(lines[1], /^2026-09-23,12,TLKM,Ex-dividend,"'=HYPERLINK\(""x"",""y""\)",-4\.3,2710,$/);
 });
 
 test("a mover window older than the news record says unknown, not quiet", () => {
@@ -895,9 +955,11 @@ test("a calendar day opens beside the grid, and the day page is where its panel 
   // The day page wraps its lists in one element the agenda can lift out.
   const day = renderDay({ date: "2026-09-16", scheduled: [], facts: [] }, [], { mock: false, asOf: null, credits: null });
   assert.match(day, /<div id="day-panel">[\s\S]*Scheduled · 0[\s\S]*Facts · 0[\s\S]*<\/div>/);
-  // The script swaps the headlines column and can put it back.
-  assert.match(day, /querySelector\('\.dash-headlines'\)/);
-  assert.match(day, /Close · back to the month/);
+  // The script swaps the right-hand panel and can put it back.
+  assert.match(day, /querySelector\('\.dash-feed'\)/);
+  assert.match(day, /Close · back/);
+  // A second click on the picked date puts the panel back.
+  assert.match(day, /a\.classList\.contains\('picked'\)\) close\(\)/);
   // A modified click is left alone, so the cell is still a real link.
   assert.match(day, /!e\.metaKey && !e\.ctrlKey/);
   // And the facts pager inside the panel pages in place rather than leaving.
@@ -927,4 +989,88 @@ test("the market is its own view, and nothing on it takes a page filter", () => 
   assert.ok(!/class="fbar"/.test(html), "no filter bar: the board and movers are the whole market");
   // The period switch stays on this page.
   assert.match(renderMovers(moversFixture(), [], { w: "BBCA" }), /href="\/market\?w=BBCA&amp;movers=1d#movers"/);
+});
+
+test("a strip that cannot price the default subject says so, and offers the closes that are held", () => {
+  const opts = { mock: false, asOf: null, credits: null, indices: INDICES, attention: NO_ATTENTION };
+  const pulse = { from: "2026-10-01", to: "2026-10-04", tag: "", who: "", headlines: [], total: 0, page: 1, pages: 1, offset: 0, topics: [], tickers: [] };
+  const fell = renderMonth([], "2026-10", [], {
+    ...opts, pulse, priceSymbol: "BBCA", priceThrough: "2026-09-29",
+    priceNote: "No closes on record for IHSG in this month, so the strip shows BBCA, which has them.",
+    priceHeld: ["ADRO", "BBCA"],
+  });
+  assert.match(fell, /class="px-note">No closes on record for IHSG/);
+  assert.match(fell, /BBCA closes to 29 Sep/, "and how far the record runs");
+  assert.match(fell, /<optgroup label="Closes on record"><option value="ADRO">ADRO<\/option><option value="BBCA" selected>BBCA<\/option>/);
+  // Not the fallback case: the picker stays the selection plus the indices.
+  const plain = renderMonth([], "2026-10", [], { ...opts, pulse, priceSymbol: "IHSG" });
+  assert.ok(!/Closes on record|px-note"/.test(plain));
+});
+
+test("needs attention and the month's headlines are one slider, not two stacked blocks", () => {
+  const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
+  const html = renderMonth([], "2026-09", [], {
+    ...opts,
+    pulse: { from: "2026-09-01", to: "2026-09-30", tag: "", who: "", headlines: [], total: 0, page: 1, pages: 1, offset: 0, topics: [], tickers: [] },
+  });
+  // Both slides live in the one panel; the first is showing.
+  assert.match(html, /<div class="slide on" data-title="Needs attention">/);
+  assert.match(html, /<div class="slide" data-title="Headlines">/);
+  assert.match(html, /class="feed-arrow" data-slide="-1"/);
+  assert.match(html, /class="feed-arrow" data-slide="1"/);
+  // Script off: nothing is hidden, so both slides just stack and nothing is lost.
+  assert.ok(STYLE.includes(".js .feed .slide{display:none}"), "hiding is gated on script being on");
+  assert.ok(STYLE.includes(".js .feed-nav{display:flex}"), "and so are the arrows");
+  // A link into the headlines lands on that slide.
+  assert.match(page({ title: "t", active: "agenda", watchlist: [], body: "", mock: false, asOf: null, credits: null }), /location\.hash === '#headlines'/);
+});
+
+test("up next follows a calendar date, and says so", () => {
+  const items = [{ cls: "scheduled", kind: "agm", symbol: "BBCA", date: "2026-09-25", title: "AGM" } as Item];
+  // Anchored off today: a way back, and an export of the same rows.
+  const html = upNext(items, ["BBCA"], "2026-09-20");
+  assert.match(html, /<button type="button" class="ghost" data-reset>Back to today<\/button>/);
+  assert.match(html, /href="\/upnext\.csv\?w=BBCA&amp;date=2026-09-20"/);
+  assert.match(html, /in 5 days · Fri 25 Sep/, "counted from the picked date, not from today");
+  // On today it is the plain list.
+  const now = upNext(items, ["BBCA"], todayIso());
+  assert.ok(!/data-reset|date=/.test(now));
+  // The script fetches the fragment and restores it with the panel.
+  const shell = page({ title: "t", active: "agenda", watchlist: [], body: "", mock: false, asOf: null, credits: null });
+  assert.match(shell, /fetch\('\/upnext\?date='/);
+  assert.match(shell, /nx\.innerHTML = nxSaved/);
+});
+
+test("the briefing button carries a tooltip that says what happened, what it makes, how, and the cost", () => {
+  const t = { symbol: "BBCA", ahead: [], refusals: [], behind: [], news: { positive: 0, negative: 0, neutral: 0, total: 0 }, tags: [] };
+  const opts = { mock: false, asOf: null, credits: null };
+  const base = { stale: false, available: true, rows: 14, model: "claude-sonnet-5", asked: [] };
+  const row = { symbol: "BBCA", generated_at: "2026-09-11T10:00:00.000Z", model: "claude-sonnet-5", fingerprint: "x", summary: [{ point: "p", sources: [] }], items: [] };
+
+  const first = renderTicker(t as any, [], { ...opts, faq: { ...base, row: null } });
+  assert.match(first, /<button type="submit" aria-describedby="faq-tip">/, "the button points at its tooltip");
+  assert.match(first, /<span class="btip" role="tooltip" id="faq-tip">/);
+  assert.match(first, /Nothing has been generated for BBCA yet/);
+  assert.match(first, /two to four paragraphs, then five questions/);
+  assert.match(first, /claude-sonnet-5 reads the 14 rows on record for BBCA/);
+  assert.match(first, /does not browse and does not recall/);
+  assert.match(first, /One model call, a few seconds/);
+
+  const current = renderTicker(t as any, [], { ...opts, faq: { ...base, row } });
+  assert.match(current, /Generated 2026-09-11 10:00 UTC by claude-sonnet-5\. The rows have not changed since, so it is current/);
+  assert.match(current, /Reopening this page is free[\s\S]*spends one more model call/);
+
+  const stale = renderTicker(t as any, [], { ...opts, faq: { ...base, row, stale: true } });
+  assert.match(stale, /has newer rows on record since/);
+
+  // Off: the wrapper is focusable, because a disabled button cannot be, and says why.
+  const off = renderTicker(t as any, [], { ...opts, faq: { ...base, available: false, why: "ANTHROPIC_API_KEY is not set", row: null } });
+  assert.match(off, /<span class="has-tip" tabindex="0">/);
+  assert.match(off, /Generation is switched off — ANTHROPIC_API_KEY is not set/);
+
+  // A failed attempt says so, and a fixture run never claims a real model wrote it.
+  assert.match(renderTicker(t as any, [], { ...opts, faq: { ...base, row: null, error: "no rows" } }), /The last attempt failed: no rows/);
+  assert.match(renderTicker(t as any, [], { ...opts, faq: { ...base, model: "fixtures", row: null } }), /every sentence of it is fabricated/);
+  // And the tooltip can be dismissed from the keyboard.
+  assert.match(page({ title: "t", active: "agenda", watchlist: [], body: "", mock: false, asOf: null, credits: null }), /e\.key !== 'Escape'/);
 });

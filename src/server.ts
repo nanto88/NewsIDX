@@ -9,7 +9,7 @@
  */
 import Fastify from "fastify";
 import { Client } from "./api.js";
-import { day, month, pulseOver, TAG_QUERY_MAX, timeline, type Timeline, upcoming } from "./calendar.js";
+import { chartFor, day, month, pulseOver, TAG_QUERY_MAX, timeline, type Timeline, upcoming } from "./calendar.js";
 import { needsAttention } from "./attention.js";
 import {
   anthropicKey,
@@ -36,6 +36,7 @@ import {
   lastRun,
   latestBoardDate,
   latestMoverDate,
+  pricedSymbols,
   recentAsks,
   startRun,
   tickerFetchedAt,
@@ -43,7 +44,7 @@ import {
 import { ensureTicker, fillBoard, fillMovers, fillPrices } from "./backfill.js";
 import { board, indexReturns, movers } from "./heatmap.js";
 import { askFaq, ensureFaq, fingerprint, MAX_QUESTION } from "./faq.js";
-import { renderDay, renderMarket, renderMonth, renderTicker, type FaqView, upNextCsv } from "./render.js";
+import { renderDay, renderMarket, renderMonth, renderTicker, type FaqView, upNext, upNextCsv } from "./render.js";
 
 const con = connect();
 
@@ -169,6 +170,49 @@ async function fillMonthPrices(symbol: string, ym: string): Promise<void> {
   }
 }
 
+/**
+ * Which subject the price strip draws, using only closes already on record.
+ *
+ * The strip's default is an index, and an index is only on record once the
+ * backfill has bought it. Without it the grid rendered with no prices at all
+ * and no hint why. So when the subject asked for holds nothing inside the grid,
+ * fall back to what IS held -- a selected company first, then an index, then
+ * whichever company has the most closes in the window -- and SAY so, because a
+ * strip silently pricing a different subject than the picker implies would be
+ * a worse failure than an empty one. A database read: it can never spend.
+ */
+function resolveStrip(requested: string | null, ym: string, w: string[], indexSymbols: string[]) {
+  const first = `${ym}-01`;
+  const held = pricedSymbols(con, shift(first, -6), shift(first, 41));
+  const has = new Set(held.map((h) => h.symbol));
+  const through = (s: string | null) => held.find((h) => h.symbol === s)?.last ?? null;
+  // The picker offers every held company that is not already a selection or an
+  // index. That list must not depend on which branch answered: returning it
+  // empty here dropped the "Closes on record" group the moment you chose from
+  // it, so the select could not show your own choice.
+  const offered = held.map((h) => h.symbol).filter((s) => !w.includes(s) && !indexSymbols.includes(s));
+  if (requested && has.has(requested)) {
+    return { symbol: requested, note: null as string | null, through: through(requested), held: offered };
+  }
+  const pick = w.find((s) => has.has(s)) ?? indexSymbols.find((s) => has.has(s)) ?? held[0]?.symbol ?? null;
+  if (!pick) {
+    return {
+      symbol: requested,
+      note: requested ? `No closes on record for ${requested} in this month yet.` : null,
+      through: null,
+      held: [],
+    };
+  }
+  return {
+    symbol: pick,
+    note: requested
+      ? `No closes on record for ${requested} in this month, so the strip shows ${pick}, which has them.`
+      : null,
+    through: through(pick),
+    held: offered,
+  };
+}
+
 const app = Fastify({ logger: false });
 
 /**
@@ -234,8 +278,11 @@ const renderAgendaPage = async (req: any, reply: any) => {
   const today = runToday();
   const ym = /^\d{4}-\d{2}$/.test(String(q.month ?? "")) ? String(q.month) : today.slice(0, 7);
   // A price strip needs one subject. `?price=` is the reader's choice from the
-  // control on the page; it must name the index or one of the selected
-  // companies, so a crafted URL cannot make us fetch an arbitrary symbol.
+  // control on the page; it must name something the control offered -- an
+  // index, a selected company, or a company we already hold closes for -- so a
+  // crafted URL cannot make us fetch an arbitrary symbol. The last group is
+  // offered by the picker ("Closes on record"), so refusing it here made the
+  // choice silently revert to the fallback.
   const indices = indexChoices();
   const index = indexSymbol();
   // An index is not a four-letter ticker, so it does not come through the
@@ -243,9 +290,11 @@ const renderAgendaPage = async (req: any, reply: any) => {
   // same guard: a crafted URL can only name a subject we already publish.
   const raw = String(q.price ?? "").trim().toUpperCase();
   const asked = indices.some((i) => i.symbol === raw) ? raw : parseWatchlist(q.price)[0];
-  const allowed = [...indices.map((i) => i.symbol), ...w];
+  const held = pricedSymbols(con, shift(`${ym}-01`, -6), shift(`${ym}-01`, 41)).map((h) => h.symbol);
+  const allowed = [...indices.map((i) => i.symbol), ...w, ...held];
   const priceSymbol = (asked && allowed.includes(asked) ? asked : null) ?? (w.length === 1 ? w[0] : index);
   if (priceSymbol) await fillMonthPrices(priceSymbol, ym);
+  const strip = resolveStrip(priceSymbol, ym, w, indices.map((i) => i.symbol));
   reply.type("text/html; charset=utf-8");
   // The pulse range is the month on screen, clipped at today: a future month
   // has nothing on record yet, and borrowing this month's headlines to fill it
@@ -268,10 +317,13 @@ const renderAgendaPage = async (req: any, reply: any) => {
   // ticker or it is nothing.
   const who = parseWatchlist(q.who)[0] ?? "";
   const pulseTo = monthEnd < today ? shift(monthEnd, -1) : today;
-  return renderMonth(month(con, ym, today, { symbols: w, index, priceSymbol, tag }), ym, w, {
+  return renderMonth(month(con, ym, today, { symbols: w, index, priceSymbol: strip.symbol, tag }), ym, w, {
     ...shellOpts(),
     indices,
-    priceSymbol,
+    priceSymbol: strip.symbol,
+    priceNote: strip.note,
+    priceThrough: strip.through,
+    priceHeld: strip.held,
     // The same range the headlines below it cover, so the two answer the same
     // question. Deliberately NOT filtered by the tag: a tag narrows what you
     // are reading, and silently hiding the month's biggest story because it
@@ -313,14 +365,30 @@ app.get("/market", async (req, reply) => {
 });
 
 // Read-only: no fill, so a download can never spend a credit.
+/** `?date=` anchors Up next to a calendar date; absent or malformed is today. */
+const upNextDate = (q: any): string =>
+  /^\d{4}-\d{2}-\d{2}$/.test(String(q.date ?? "")) ? String(q.date) : runToday();
+
 app.get("/upnext.csv", async (req, reply) => {
-  const w = watchlistFrom(req.query as any);
-  const today = runToday();
+  const q = req.query as any;
+  const w = watchlistFrom(q);
+  const from = upNextDate(q);
   reply
     .type("text/csv; charset=utf-8")
-    .header("content-disposition", `attachment; filename="newsidx-upnext-${today}.csv"`);
-  return upNextCsv(upcoming(con, w, today), today);
+    .header("content-disposition", `attachment; filename="newsidx-upnext-${from}.csv"`);
+  return upNextCsv(upcoming(con, w, from), from);
 });
+
+/** Up next as a fragment, counted forward from a calendar date. Read-only like
+ * the CSV: no fill, so clicking through the calendar can never spend. */
+app.get("/upnext", async (req, reply) => {
+  const q = req.query as any;
+  const w = watchlistFrom(q);
+  const from = upNextDate(q);
+  reply.type("text/html; charset=utf-8");
+  return upNext(upcoming(con, w, from), w, from);
+});
+
 
 app.get("/day", async (req, reply) => {
   const q = req.query as any;
@@ -343,12 +411,22 @@ app.get("/ticker", async (req, reply) => {
     "BBCA";
   await fill([symbol]);
   reply.type("text/html; charset=utf-8");
-  const t = timeline(con, symbol, runToday());
+  const today = runToday();
+  const t = timeline(con, symbol, today);
+  const tag = String(q.tag ?? "").slice(0, TAG_QUERY_MAX);
+  // ?view=calendar draws this one company's month (?month= picks it);
+  // ?view=chart draws its price line with the news and filings on it.
+  const view = q.view === "calendar" ? "calendar" : q.view === "chart" ? "chart" : "list";
+  const ym = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(q.month)) ? String(q.month) : today.slice(0, 7);
   return renderTicker(t, w, {
     ...shellOpts(),
     page: pageFrom(q),
     // The same Topic filter the agenda carries, on the same query param.
-    tag: String(q.tag ?? "").slice(0, TAG_QUERY_MAX),
+    tag,
+    view,
+    month: ym,
+    cells: view === "calendar" ? month(con, ym, today, { symbols: [symbol], tag }) : undefined,
+    chart: view === "chart" ? chartFor(con, symbol, today, tag) : undefined,
     faq: faqView(t, {
       error: typeof q.faqerror === "string" ? q.faqerror.slice(0, 200) : null,
       askHash: typeof q.ask === "string" ? q.ask.slice(0, 64) : null,

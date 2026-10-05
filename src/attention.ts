@@ -17,7 +17,7 @@
  * Sectors feed are counted.
  */
 import type { Database } from "better-sqlite3";
-import { type Item, type ViewClass, matchesTag, predictionsFor, sentimentOf, toItem } from "./calendar.js";
+import { type Item, matchesTag, sentimentOf, toItem } from "./calendar.js";
 import { eventsInRange, pricesInRange } from "./db.js";
 import { daysBetween, shift } from "./dates.js";
 import {
@@ -200,63 +200,28 @@ export function threadsOf(
 /** A date somebody published, close enough to the story to matter. */
 export interface Nearby {
   kind: string;
-  /** `scheduled` is the issuer's date; `predicted` is a window we fitted, and
-   * the two never render the same way. */
-  cls: ViewClass;
-  /** Scheduled: the date. Predicted: the start of the window. */
   date: string;
-  window?: { from: string; to: string } | null;
   /** Days from the story's last headline to that date. 0 means the story
-   * landed on it, or the window is already open. */
+   * landed on it. */
   days: number;
 }
 
 /**
- * The nearest dated event for this name, at or after `after`, inside the
- * window.
- *
- * Scheduled rows come from the database; predicted windows are fitted by
- * `predictionsFor`, which already skips any kind the issuer has dated ahead --
- * so a name with a published ex-date can never also carry a fitted one here.
- * On a tie the published date wins: a window is the weaker claim and is
- * labelled as one.
+ * The nearest date the issuer has published for this name, at or after
+ * `after`, inside the window.
  */
 export function nearestEvent(
   con: Database,
   symbol: string,
   after: string,
-  today: string,
   withinDays: number = ATTENTION_NEAR_DAYS
 ): Nearby | null {
   if (!symbol) return null;
-  const limit = shift(after, withinDays);
-  const found: Nearby[] = eventsInRange(con, after, limit, [symbol])
+  const found: Nearby[] = eventsInRange(con, after, shift(after, withinDays), [symbol])
     .filter((r) => r.class === "scheduled")
-    .map((r) => ({
-      kind: r.kind,
-      cls: "scheduled" as ViewClass,
-      date: r.date,
-      window: null,
-      days: daysBetween(after, r.date),
-    }));
+    .map((r) => ({ kind: r.kind, date: r.date, days: daysBetween(after, r.date) }));
 
-  for (const p of predictionsFor(con, symbol, today, limit).items) {
-    if (!p.window) continue;
-    // A window that opened before the story still counts, at zero days: it is
-    // open now, which is the most urgent a window gets.
-    if (p.window.to < after) continue;
-    found.push({
-      kind: p.kind,
-      cls: "predicted",
-      date: p.window.from,
-      window: p.window,
-      days: Math.max(0, daysBetween(after, p.window.from)),
-    });
-  }
-
-  found.sort(
-    (a, b) => a.days - b.days || Number(a.cls === "predicted") - Number(b.cls === "predicted")
-  );
+  found.sort((a, b) => a.days - b.days);
   return found[0] ?? null;
 }
 
@@ -377,7 +342,7 @@ export function needsAttention(
     let near: Nearby | null = null;
     for (const sym of thread.symbols) {
       const key = `${sym}|${thread.to}`;
-      if (!nearCache.has(key)) nearCache.set(key, nearestEvent(con, sym, thread.to, today));
+      if (!nearCache.has(key)) nearCache.set(key, nearestEvent(con, sym, thread.to));
       const n = nearCache.get(key)!;
       if (n && (!near || n.days < near.days)) near = n;
     }

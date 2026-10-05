@@ -25,7 +25,7 @@ Open <http://localhost:3000>. No API key, no network, nothing to sign up for.
 5. [CLI Usage](#5-cli-usage)
 6. [Configuration](#6-configuration)
 7. [Sectors API Integration](#7-sectors-api-integration)
-8. [Certainty and Prediction Rules](#8-certainty-and-prediction-rules)
+8. [Certainty Rules](#8-certainty-rules)
 9. [Web Dashboard](#9-web-dashboard)
 10. [Testing](#10-testing)
 11. [Credit Budget and Run Ledger](#11-credit-budget-and-run-ledger)
@@ -38,10 +38,9 @@ Open <http://localhost:3000>. No API key, no network, nothing to sign up for.
 
 NewsIDX is a 90 day calendar that only shows the companies you actually hold.
 
-Where the issuer published a date, it shows that date. Where nobody published one, it shows a
-window worked out from the company's own past behaviour, and tells you how often that method
-has been right. Where the effect is arithmetic, like an ex-dividend drop, it shows the number
-and the maths behind it.
+Where the issuer published a date, it shows that date, and nothing ahead of today is guessed.
+Where the effect is arithmetic, like an ex-dividend drop, it shows the number and the maths
+behind it.
 
 The whole thing is a server-rendered site over a SQLite file. No accounts, no login, no
 client-side framework. Your watchlist lives in the URL (`?w=BBCA,BBRI,TLKM`), so you can
@@ -55,8 +54,7 @@ bookmark it or send it to someone.
 |---|---|
 | **Your 90 days** | A calendar scoped to your watchlist, with everything else on the page still market-wide |
 | **Up next** | The page opens on your book: next event, 7- and 30-day counts, ex-dividend exposure, and one date-sorted table of the 90 days ahead |
-| **Three certainty classes** | Facts, issuer-scheduled dates and predicted windows are drawn as three different shapes, never three colours |
-| **Fitted windows** | Recurring events get a date range fitted from that company's own history, scored walk-forward so the hit rate is measurable today |
+| **Two certainty classes** | Facts and issuer-scheduled dates are drawn as two different shapes, never two colours |
 | **Ex-dividend arithmetic** | Dividend over last close, with both inputs printed beside it so you can check the sum |
 | **Tone as a percentage** | Bullish and bearish news tags counted into a share, per event and per page. Nothing tagged shows nothing, not a meaningless 50% |
 | **Cluster warning** | A heads-up when your month bunches: *"three of your eight names land in the week of 21 Sep"* |
@@ -91,11 +89,10 @@ bookmark it or send it to someone.
   SQLite (data/newsidx.db) ... events, tickers, prices, board,
         |                      api_cache, run ledger
         v
-  predict.ts ................. the two fits, the falsifier,
-        |                      the ex-dividend arithmetic
+  dividend.ts ................ the ex-dividend arithmetic
         v
-  calendar.ts / attention.ts . view models. facts and scheduled rows
-        |                      meet predicted windows here, never in the db
+  calendar.ts / attention.ts . view models, computed on the way out,
+        |                      never stored
         v
   render.ts -> server.ts ..... server-rendered HTML, four routes
 ```
@@ -103,9 +100,9 @@ bookmark it or send it to someone.
 Two rules hold this shape together:
 
 **Derived values are never stored.** The database holds only what an API returned. Every
-window, percentage and ranking is computed on the way out, so a bad fit can never poison a row.
+percentage and ranking is computed on the way out, so a bad calculation can never poison a row.
 
-**No model decides anything.** `predict.ts` does not import a model and never will. Claude
+**No model decides anything.** Claude
 appears in exactly one place, section 9's summary and FAQ, where it phrases rows we already
 hold. It never browses, never recalls, and is never the source of a number.
 
@@ -194,7 +191,7 @@ longer commentary on each one.
 ### What the watchlist actually scopes
 
 Only the per-ticker calls, which means corporate actions and quarterly dates, which in turn
-produce the scheduled chips and the fitted windows. Filings, suspensions and news are
+produce the scheduled chips. Filings, suspensions and news are
 market-wide range calls with no symbol filter, so the database ends up holding facts for every
 listed company. The watchlist filters your *agenda*. `/month` and `/day` still show the whole
 market.
@@ -254,15 +251,12 @@ That is a quarter *end*, not the day anybody filed anything. The market-wide fee
 shape.
 
 So there is no filing rhythm in that data to fit, and the earnings prediction we had planned
-had no source underneath it. Two things follow, and both are in the code:
+had no source underneath it. **Every report chip says so, on the chip:** "The feed carries the
+period (quarter end), not the date this was filed", along with the date we first saw the row,
+which is the only timing fact we genuinely hold.
 
-* **Every report chip says so, on the chip.** "The feed carries the period (quarter end), not
-  the date this was filed", along with the date we first saw the row, which is the only timing
-  fact we genuinely hold. No report window is drawn anywhere in the product, and `predict.ts`
-  does not have a quarterly fit sitting there switched off.
-* **The rhythm fit moved to data we verified does vary.** `corporate_actions.dividend[].ex_date`
-  and `agm[].agm_date` carry genuinely different dates year to year. Those two are the only
-  kinds `predictionsFor()` will fit, and that list is a constant you can go and read.
+A later annual-rhythm fit for ex-dividend dates and general meetings was also removed: on real
+data it drew 2 windows across 332 companies. See METHODOLOGY.md §4.
 
 ### The unverified index ticker
 
@@ -273,31 +267,26 @@ index's name.
 
 ---
 
-## 8. Certainty and Prediction Rules
+## 8. Certainty Rules
 
 The Sectors API has exactly one field that natively points forward: `upcoming_dividend`. The
-past is dense, the future is thin. A calendar that draws both the same way either looks empty
-ahead of today, or quietly passes off a guess as a schedule. So we draw three shapes.
+past is dense, the future is thin. We show only what was published, and draw the two kinds
+differently.
 
 | Class | How sure we are | How it looks |
 |---|---|---|
 | **Fact** | It happened, and the official record is attached | Solid fill |
 | **Scheduled** | The issuer published this date | Solid fill with a cyan rule down the left |
-| **Predicted** | We worked it out from the company's own rhythm | Dashed outline, always a window and never a single date, with a confidence measured out of sample |
 
 Shapes rather than colours, because colour on its own fails colour-blind readers, and it also
 fails on a compressed video.
 
 ### Rules the code keeps
 
-1. A predicted chip never renders like a scheduled one. Different shape, a window, and the word
-   "predicted" on it.
+1. Every date ahead of today is one the issuer published. Nothing is fitted or guessed.
 2. Every fact chip links its official record. A fact without a source is just an assertion.
 3. News is context, never cause. Chips say what was published that day, and nothing more.
-4. A window we cannot draw gets stated, not widened. A three-week band dressed up as a forecast
-   is worse than saying nothing.
-5. The hit rate always says how it was measured, with the sample size beside it.
-6. No model decides anything. See [Architecture](#3-architecture).
+4. No model decides anything. See [Architecture](#3-architecture).
 
 ### How the Topic filter selects
 
@@ -315,12 +304,6 @@ means by ticking a second box, and it stops the filter emptying itself on the ma
 never co-occur: one story is rarely both a dividend and a suspension. Each topic is matched
 case-insensitively as a substring of the row's own tags.
 
-### How a window is scored
-
-Fitted from the company's own ex-dividend and general-meeting history, then scored
-walk-forward, which means every past occurrence was predicted using only the ones before it.
-That is why we can tell you the hit rate today instead of asking you to wait a year to find out.
-
 `METHODOLOGY.md` is a single page on how each number is made, and what none of them claim.
 
 ---
@@ -336,7 +319,7 @@ npm run demo:serve
 |---|---|---|
 | **Agenda** | `/` (also `/month`) | What is coming for *my* names, and what is being said about them |
 | **Market** | `/market` | What the whole exchange just did: indices, the board, the movers |
-| **Company** | `/ticker?symbol=BBCA` | One company: its events, its rhythm, its history, a briefing |
+| **Company** | `/ticker?symbol=BBCA` | One company: its events, its history, a briefing |
 | **Day** | `/day?date=2026-09-21` | Everything on the record for one date |
 
 **The board** opens the Market view: the 200 biggest IDX companies as one treemap, grouped by
@@ -364,15 +347,16 @@ company's own usual rate, and whether it lands on top of a date the issuer alrea
 Each row's **Why** opens the parts its score is made of. We never call anything viral: there are
 no share counts in this data, and counting distinct sources is a floor on attention, never reach.
 
-**The company page** carries every event we hold with its official record linked, the fitted
-rhythm and its hit rate, and beside them a generated summary, FAQ and ask box. The summary needs
+**The company page** carries every event we hold with its official record linked, split into
+filings and corporate actions (never filtered by topic) and news (which the topic narrows).
+Each list folds, and a **List / Calendar / Chart** switch redraws the record as that company's month, or as its 90-day price line with the news and filings hung on it as hoverable markers (each kind can be switched off).
+Beside them is a generated summary, FAQ and ask box. The summary needs
 `ANTHROPIC_API_KEY`; without one the button is simply disabled, and the demo serves a fixture so
 it works with no key.
 
 **Up next** opens the agenda. It shows four counts: the next event, the next 7 days, the next 30
-days, and ex-dividend dates with the largest expected drop. Dated and predicted are counted
-apart in every tile. Under the counts is one table of the selected names' next 90 days, sorted
-by date, giving days to go, certainty and the expected drop. A holding with nothing ahead is
+days, and ex-dividend dates with the largest expected drop. Under the counts is one table of
+the selected names' next 90 days, sorted by date, giving days to go and the expected drop. A holding with nothing ahead is
 named rather than left out. With no companies picked it lists the market's dated events only. **Download CSV** exports the same rows, one per event, for a spreadsheet. The route
 is read-only and cannot spend a credit. A text cell that starts with `=`, `+`, `-` or `@` is
 prefixed with an apostrophe, so a headline cannot run as a formula.
@@ -396,24 +380,32 @@ the movers are the whole exchange and take no filter, and each carries its own c
 sector select, a period switch) on the block itself.
 
 Above 1200px the agenda is two tracks with one job each: **what is coming** on the left (Up
-next, then the month), **what is being said** on the right (Needs attention, then the
-headlines). Each track is its own column, so a long list on one side never opens a gap on the
-other, and DOM order — left track, then right — is the reading order at every width, for a
-screen reader and the tab key too. Below 1200px it is one column in that order. The company page
-is the same two tracks: the record on the left, the generated briefing beside it.
+next, then the month), **what is being said** on the right. The right track is one panel with
+an arrow slider: **Needs attention** and **Headlines this month** share it, `‹ 1 / 2 ›` slides
+between them, and a link into the headlines (their pager, or `#headlines`) opens on that slide.
+With scripts off both slides simply stack. Each track is its own column, so a long list on one
+side never opens a gap on the other, and DOM order — left track, then right — is the reading
+order at every width. Below 1200px it is one column in that order. The company page is the same
+two tracks: the record on the left, the generated briefing beside it.
 
 **Explanations are one click away, not in front.** Every block's method lives behind an **i**
-beside its heading, and the key to Fact / Scheduled / Predicted lives in the **About** drawer.
+beside its heading, and the key to Fact / Scheduled lives in the **About** drawer.
 Both are the native `popover`: no script, Escape and click-outside close them, and a browser
 without popover support renders the text inline. The short shape key stays visible under every
 list, because provenance is the product.
 
-**A date in the calendar opens beside it.** Clicking a day swaps the headlines column for that
-day's scheduled events and facts, with **Close · back to the month** to restore it and a link
-to the full day page. The cell is still a real link, so ⌘/Ctrl-click, middle-click and a
-browser with scripts off all open `/day` as before. The panel is lifted from the day page
-itself, so a day has one renderer. On a priced grid the date number takes the close's
-direction, green up and red down, like the close under it.
+**A date in the calendar takes over the right panel.** Clicking a day swaps the Needs
+attention / Headlines slider for that day's scheduled events and facts, with **Open full day** and
+**Close · back**. Clicking the same date again puts the slider back, on the slide it was on;
+clicking a different date switches to that day. The cell is still a real link, so ⌘/Ctrl-click,
+middle-click and a browser with scripts off all open `/day` as before. The panel is lifted from
+the day page itself, so a day has one renderer. On a priced grid the date number takes the
+close's direction, green up and red down, like the close under it.
+**Up next follows the date.** The same click re-anchors Up next to the picked day: the next
+event, the 7- and 30-day counts, ex-dividend exposure and the table all count forward from that
+date, and **Download CSV** exports that same list (`/upnext.csv?date=…`). **Back to today**, a
+second click on the date, or closing the panel restores it. It is its own read-only fragment
+(`/upnext?date=…`), so clicking through the calendar can never spend a credit.
 
 **The board filters by sector.** A sector select on the board's heading, each option carrying
 that sector's cap-weighted move. Picking one redraws the treemap with only that sector, boxed
@@ -454,8 +446,7 @@ nobody has fetched before (`FILL_ON_DEMAND`, always on in mock mode).
 npm test
 ```
 
-150 tests through `node --test`, covering the fit, the falsifier, the walk-forward scoring, the
-bucketing, the idempotent upsert, HTML escaping, the treemap geometry, and one assertion that
+147 tests through `node --test`, covering the ex-dividend arithmetic, the bucketing, the idempotent upsert, HTML escaping, the treemap geometry, and one assertion that
 fails if a single design-system hex value drifts.
 
 No key and no network needed. The suite builds first, so it also serves as the typecheck.
@@ -498,16 +489,16 @@ NewsIDX/
 │   ├── api.ts .............. credit ceiling, cost assertion, permanent cache, mock mode
 │   ├── backfill.ts ......... API responses into rows. Ranges first, then bounded fills
 │   ├── db.ts ............... every table, one write path, idempotent upserts
-│   ├── predict.ts .......... the two fits, the falsifier, the ex-dividend arithmetic
+│   ├── dividend.ts ......... the ex-dividend arithmetic
 │   ├── attention.ts ........ threading headlines, nearest dated event, the ranked list
-│   ├── calendar.ts ......... view models. Facts and windows meet here, never in the db
+│   ├── calendar.ts ......... view models, computed on read, never stored
 │   ├── heatmap.ts .......... the board (a squarified treemap) and the ranked movers
 │   ├── faq.ts .............. the one place a model is involved
 │   ├── render.ts ........... server-rendered HTML
 │   ├── server.ts ........... the routes: agenda, month, day, ticker, two FAQ endpoints
 │   ├── config.ts ........... env, paths, the credit ceiling, the design tokens
-│   ├── cache.ts, dates.ts, stats.ts
-│   ├── *.test.ts ........... 150 tests
+│   ├── cache.ts, dates.ts
+│   ├── *.test.ts ........... 147 tests
 │   └── mock/fixtures.ts .... made-up data in the API's own response shapes
 ├── scripts/
 │   ├── backfill-run.ts ..... the backfill entry point
@@ -526,8 +517,6 @@ NewsIDX/
 **NewsIDX is research tooling. It is not investment advice.**
 
 * Nothing here is a recommendation to buy, sell or hold any security.
-* Predicted windows are computed from a company's own past behaviour. They are estimates with a
-  published error rate, not schedules, and the product draws them differently for that reason.
 * News is context, never cause. A chip tells you what was published on a date and stops there.
 * No macro coverage. Sectors holds no rate, CPI or GDP data, and the UI never implies otherwise.
 * Run in demo mode, every number on every page is fabricated, and each page says so in a banner.

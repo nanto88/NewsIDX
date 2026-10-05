@@ -13,11 +13,8 @@
  *   corporate-actions   corporate_actions.{agm[],dividend[],stock_split[],upcoming_dividend}
  *   quarterly dates     {"2026":[["2026-03-31","q1"]]}  <- a quarter END, deliberately
  *
- * That last one is the point of the whole fixture set: the spec documents
- * these as period keys, so the demo exercises predict.reportDatesUsable()
- * FAILING and the UI rendering "no window" with the reason. The positive
- * filing-lag path is covered in predict.test.ts against synthetic dates,
- * where it is unambiguously a test rather than a claim about the API.
+ * That last one is deliberate: the spec documents these as period keys, so
+ * report chips say they carry the period, not the filing date.
  */
 import { isWeekend, shift } from "../dates.js";
 
@@ -235,15 +232,10 @@ const NEWS: Row[] = [
 
 // ---------------------------------------------------------------- corporate actions
 //
-// The dividend and AGM histories are what predict.fitAnnualRhythm actually
-// fits, and each cast member exercises one branch:
+// Past dividends and AGMs become fact chips; the dated ones ahead become
+// scheduled chips:
 //
-//   BBCA  four Decembers, tight spread        -> a window, with a hit rate
-//   BBRI  five Novembers, tight spread        -> a window, with a hit rate
-//   ICBP  four Octobers, moderate spread      -> a window
-//   ASII  four dates spread over five weeks   -> NO window (too wide)
-//   ANTM  two dividends ever                  -> NO window (too little history)
-//   TLKM  a dated upcoming_dividend           -> a SCHEDULED chip, not predicted
+//   TLKM  a dated upcoming_dividend
 //   PGAS  a dated upcoming_dividend
 //   BMRI  a dated AGM inside the horizon
 //

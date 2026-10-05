@@ -27,8 +27,8 @@ const poll = process.argv.includes("--poll");
 // chips that can only say which PERIOD is available (the feed carries no
 // filing date). Worth it once, not on every run -- so it is opt-in.
 const wantReports = process.argv.includes("--reports");
-// Re-fit every watched symbol from the cached responses. Costs nothing (every
-// call is a cache hit) and is how a change to predict.ts reaches the database
+// Re-fill every watched symbol from the cached responses. Costs nothing (every
+// call is a cache hit) and is how a change to backfill.ts reaches the database
 // without re-buying a single response.
 const refit = process.argv.includes("--refit");
 const con = connect();

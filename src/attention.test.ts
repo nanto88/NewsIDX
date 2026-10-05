@@ -126,47 +126,27 @@ test("one story naming four banks is one row, not four", () => {
 
 // ---------------------------------------------------------------- near a date
 
-test("the nearest published date wins, and a fitted window is never returned as one", () => {
+test("the nearest published date wins", () => {
   const con = db([
     ...PICKUP,
     { date: "2026-09-22", symbol: "ANTM", kind: "exdiv", class: "scheduled", title: "Cash dividend · ex-date" },
     { date: "2026-10-30", symbol: "ANTM", kind: "agm", class: "scheduled", title: "General meeting" },
   ]);
-  const near = nearestEvent(con, "ANTM", "2026-09-16", TODAY)!;
+  const near = nearestEvent(con, "ANTM", "2026-09-16")!;
   assert.equal(near.kind, "exdiv");
-  assert.equal(near.cls, "scheduled");
   assert.equal(near.days, 6);
-  assert.equal(near.window, null, "a scheduled row is a date, and carries no window");
 });
 
-test("nothing inside the window means no flag, rather than a wider window", () => {
+test("nothing inside the window means no flag", () => {
   const con = db([
     ...PICKUP,
     { date: "2026-11-30", symbol: "ANTM", kind: "exdiv", class: "scheduled", title: "Cash dividend · ex-date" },
   ]);
-  assert.equal(nearestEvent(con, "ANTM", "2026-09-16", TODAY), null);
-  assert.equal(nearestEvent(con, "", "2026-09-16", TODAY), null, "market-wide news has no issuer");
+  assert.equal(nearestEvent(con, "ANTM", "2026-09-16"), null);
+  assert.equal(nearestEvent(con, "", "2026-09-16"), null, "market-wide news has no issuer");
 });
 
 // ---------------------------------------------------------------- the ranking
-
-/** Four years of ex-dates is enough history for the fit to be offered one. */
-const HISTORY: EventRow[] = ["2022-09-26", "2023-09-25", "2024-09-24", "2025-09-25"].map((date) => ({
-  date,
-  symbol: "PGAS",
-  kind: "exdiv",
-  class: "fact",
-  title: "Cash dividend · ex-date",
-}));
-
-test("a fitted window is labelled predicted, and never as a date the issuer gave", () => {
-  const con = db([...HISTORY, news("2026-09-16", "PGAS", "PGAS signs an LNG supply deal", "a.invalid")]);
-  const near = nearestEvent(con, "PGAS", "2026-09-16", TODAY);
-  assert.ok(near, "four Septembers in a row is a rhythm");
-  assert.equal(near!.cls, "predicted");
-  assert.ok(near!.window, "a predicted row carries a window, never a bare date");
-  assert.equal(near!.date, near!.window!.from);
-});
 
 test("the floor keeps out a lone story on a name with no date near it", () => {
   const con = db([
@@ -190,7 +170,6 @@ test("a single-source story does clear the floor when it lands on a date", () =>
   const a = needsAttention(con, { from: "2026-09-01", to: TODAY, today: TODAY, watchlist: ["PGAS"] });
   assert.equal(a.rows.length, 1);
   assert.equal(a.rows[0].near?.days, 5);
-  assert.equal(a.rows[0].near?.cls, "scheduled");
 });
 
 test("pickup is measured against the name's own rate, and refused without a baseline", () => {

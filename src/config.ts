@@ -28,26 +28,6 @@ export const DAILY_CREDIT_CAP = 40;
 // --- windows. plan.md §4a (90-day agenda) and §8 step 3 (90-day backfill).
 export const HORIZON_DAYS = 90;
 
-// --- the rhythm fit (METHODOLOGY.md §4). Every one of these is a refusal
-// threshold as much as a parameter: loosen them and the product starts drawing
-// windows it cannot defend.
-/** A gap this wide in day-of-year starts a new season. A final in March and an
- * interim in November are two rhythms, and fitting them as one refuses both. */
-export const FIT_SEASON_GAP_DAYS = 45;
-/** Occurrences kept per season. Issuers drift; a decade ago is not evidence. */
-export const FIT_KEEP = 6;
-/** Fewer than this is not a rhythm yet, it is a coincidence with a date. */
-export const FIT_MIN_OCCURRENCES = 3;
-/** Window half-width = this × MAD. */
-export const FIT_SPREAD_MULT = 1.5;
-/** Above this the dates move too much to call a window at all -- refused, not
- * widened. A fortnight of uncertainty is not a forecast. */
-export const FIT_MAX_SPREAD_DAYS = 10;
-/** Below 2 days a "window" is a date in a range's clothing; above 7 it is too
- * vague to act on. */
-export const FIT_WINDOW_MIN_HALF = 2;
-export const FIT_WINDOW_MAX_HALF = 7;
-
 // --- the FAQ generator (plan.md §4a). Off unless a key is set; the button
 // says so rather than failing on click.
 /** Claude writes the /ticker summary and FAQ from the rows we already hold. */

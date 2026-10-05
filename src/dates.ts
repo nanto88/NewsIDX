@@ -1,7 +1,6 @@
 /**
  * ISO date arithmetic. Copied from ../sentry_fin/server/src/dates.ts, plus the
- * three helpers the calendar needs (week bucketing and day-of-year, which is
- * the axis predict.ts fits on).
+ * week bucketing the calendar needs.
  *
  * UTC throughout, deliberately. IDX is UTC+7 and a local-time Date rolls the
  * date backwards for anyone running this west of Greenwich.
@@ -50,19 +49,6 @@ export function weekStart(iso: string): string {
   return shift(iso, w === 0 ? -6 : 1 - w);
 }
 
-/** 1-366. The axis an annual rhythm is fitted on (predict.ts). */
-export function dayOfYear(iso: string): number {
-  const [y] = iso.split("-").map(Number);
-  return daysBetween(`${y}-01-01`, iso) + 1;
-}
-
-/** Inverse of dayOfYear, so a fitted window can be read back as a date.
- * Out-of-range values roll into the neighbouring year, which is what a
- * late-December rhythm needs. */
-export function fromDayOfYear(year: number, doy: number): string {
-  return shift(`${year}-01-01`, Math.round(doy) - 1);
-}
-
 export function year(iso: string): number {
   return Number(iso.slice(0, 4));
 }
@@ -87,13 +73,6 @@ export function fmtLong(iso: string): string {
   const long = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][weekday(iso)];
   const month = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"][m - 1];
   return `${long} ${d} ${month} ${y}`;
-}
-
-/** "22-28 Oct" / "29 Oct-4 Nov" -- a predicted window never renders as one date. */
-export function fmtRange(from: string, to: string): string {
-  const [, m1, d1] = from.split("-").map(Number);
-  const [, m2, d2] = to.split("-").map(Number);
-  return m1 === m2 ? `${d1}–${d2} ${MONTHS[m1 - 1]}` : `${d1} ${MONTHS[m1 - 1]}–${d2} ${MONTHS[m2 - 1]}`;
 }
 
 export function monthLabel(ym: string): string {

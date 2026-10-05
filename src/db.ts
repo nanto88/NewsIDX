@@ -532,6 +532,25 @@ export function pricesInRange(
   return out;
 }
 
+/**
+ * Every symbol holding closes inside a window, most rows first, plus the date
+ * each one's record ends. A database read and nothing more: this is what the
+ * price strip falls back on when its default subject has no closes, so the
+ * strip always draws from data already bought.
+ */
+export function pricedSymbols(
+  con: Database.Database,
+  from: string,
+  to: string
+): { symbol: string; n: number; last: string }[] {
+  return con
+    .prepare(
+      `SELECT symbol, COUNT(*) n, MAX(date) last FROM price
+       WHERE date BETWEEN ? AND ? GROUP BY symbol ORDER BY n DESC, symbol`
+    )
+    .all(from, to) as { symbol: string; n: number; last: string }[];
+}
+
 /** Whether we hold any close for this symbol inside the window -- the test the
  * route uses before deciding to spend a credit. */
 export function hasPrices(con: Database.Database, symbol: string, from: string, to: string): boolean {
@@ -556,13 +575,6 @@ export function lastClose(
   return r?.close ?? null;
 }
 
-/**
- * The names that could have a rhythm at all: those with a corporate-action
- * history on record. Far smaller than `allSymbols` -- filings and news are
- * market-wide, so most symbols in `event` have never had a per-ticker call
- * spent on them -- which is what keeps the unfiltered agenda from fitting a
- * window for every company on the exchange.
- */
 // ---------------------------------------------------------------- the board
 
 export interface BoardRow {
@@ -660,20 +672,4 @@ export function moversOn(con: Database.Database, date: string, period: string): 
   return con
     .prepare(`SELECT * FROM mover WHERE date = ? AND period = ? ORDER BY direction, rank`)
     .all(date, period) as MoverRow[];
-}
-
-export function symbolsWithHistory(
-  con: Database.Database,
-  kinds: string[],
-  before: string
-): string[] {
-  const holes = kinds.map(() => "?").join(",");
-  return (
-    con
-      .prepare(
-        `SELECT symbol FROM event WHERE symbol <> '' AND kind IN (${holes}) AND date < ?
-         GROUP BY symbol ORDER BY symbol`
-      )
-      .all(...kinds, before) as { symbol: string }[]
-  ).map((r) => r.symbol);
 }

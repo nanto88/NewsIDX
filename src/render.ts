@@ -13,6 +13,8 @@
  */
 import {
   Cell,
+  Chart,
+  ChartMark,
   Day,
   Item,
   MAX_TAGS,
@@ -27,7 +29,7 @@ import { type Attention, contributions } from "./attention.js";
 import type { Board, IndexReturn, Mover, Movers, SectorBox, Tile } from "./heatmap.js";
 import type { AskRow, FaqRow } from "./db.js";
 import { MAX_QUESTION } from "./faq.js";
-import { fmtPct, hitRateLabel } from "./predict.js";
+import { fmtPct } from "./dividend.js";
 import {
   ATTENTION_BASELINE_DAYS,
   ATTENTION_NEAR_DAYS,
@@ -41,7 +43,7 @@ import {
   MOVER_PERIODS,
   type MoverPeriod,
 } from "./config.js";
-import { daysBetween, fmtLong, fmtRange, fmtShort, fmtWithDay, monthLabel, shift, today as todayIso } from "./dates.js";
+import { daysBetween, fmtLong, fmtShort, fmtWithDay, monthLabel, shift, today as todayIso } from "./dates.js";
 
 /** What each weighted component is called on the page. The keys are
  * ATTENTION_WEIGHTS'; naming them here keeps the wording out of the maths. */
@@ -278,7 +280,7 @@ export const STYLE = `
   .key.full span{align-items:flex-start}
   .key.full .sw{flex:none;margin-top:3px}
 
-  /* ---------------- chips: three classes, three shapes (plan.md §2) ---------------- */
+  /* ---------------- chips: two classes, two shapes (plan.md §2) ---------------- */
   .rows{display:flex;flex-direction:column;gap:7px}
   .chip{display:grid;grid-template-columns:78px 52px 1fr;gap:12px;align-items:baseline;
         padding:11px 13px;border-radius:9px;border:1px solid var(--border);background:var(--surface-2)}
@@ -290,26 +292,57 @@ export const STYLE = `
   .chip.sched{box-shadow:inset 2px 0 0 var(--primary)}
   .chip.sched .kind{color:var(--primary-dark)}
   .chip.fact .kind{color:var(--text-muted)}
-  /* Predicted: no fill and a dashed edge. A shape, not a colour -- colour
-     alone fails colour-blind readers and fails a compressed video. */
-  .chip.pred{background:none;border-style:dashed}
-  .chip.pred .when,.chip.pred .kind,.chip.pred .what{color:var(--text-muted)}
-  .chip.pred .when{font-weight:600}
-  details.how{margin-top:5px}
-  details.how summary{font-size:11px;color:var(--text-muted);cursor:pointer;list-style:none;
-                      min-height:24px;display:flex;align-items:center}
-  details.how summary::-webkit-details-marker{display:none}
-  details.how summary::before{content:"▸ ";font-size:9px}
-  details.how[open] summary::before{content:"▾ "}
-  details.how .note{margin-top:4px;font-size:11.5px}
   .drop{font-family:var(--font-mono);font-size:11.5px;color:var(--down)}
   .note{color:var(--text-muted);font-size:12px;margin-top:3px}
   .src{font-family:var(--font-mono);font-size:11px;color:var(--primary-dark);
        border-bottom:1px dashed color-mix(in srgb,var(--primary) 40%,transparent);cursor:default}
 
+  /* A collapsible block: the native <details>, so no script and the state is the
+     browser's own. The summary is the block's heading. */
+  details.fold>summary{cursor:pointer;list-style:none;display:flex;align-items:baseline;gap:8px;min-height:24px}
+  details.fold>summary::-webkit-details-marker{display:none}
+  details.fold>summary::before{content:"▸";font-size:11px;color:var(--text-muted);width:12px}
+  details.fold[open]>summary::before{content:"▾"}
+  details.fold>summary .kicker{margin:28px 0 12px}
+  /* List / Calendar: two links in one pill, the current one filled. */
+  .vswitch{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  .vswitch a{padding:5px 12px;font-size:12.5px;color:var(--text-muted);text-decoration:none;min-height:24px}
+  .vswitch a[aria-current="page"]{background:var(--surface-2);color:var(--text);font-weight:600}
+  /* The company's price line, with its news and filings hung on it as markers.
+     Positions are percentages of the plot, so it scales with no script; the
+     hint is the same card the calendar cells use. Shapes carry the meaning
+     (circle = news, diamond = filings and actions), colour does not. */
+  .chartbox{margin-top:8px}
+  .chartopts{display:flex;flex-wrap:wrap;gap:14px;margin:0 0 10px;font-size:12.5px;color:var(--text-muted)}
+  .chartopts label{display:inline-flex;align-items:center;gap:6px;cursor:pointer;min-height:24px}
+  .plot{position:relative;height:300px;border:1px solid var(--border);border-radius:10px;
+        background:var(--surface);margin-bottom:32px}
+  .plot svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
+  .plot .ln{fill:none;stroke:var(--primary);stroke-width:2;vector-effect:non-scaling-stroke}
+  .plot .ar{fill:color-mix(in srgb,var(--primary) 10%,transparent);stroke:none}
+  .plot .gl{stroke:var(--border);stroke-width:1;vector-effect:non-scaling-stroke;stroke-dasharray:3 4}
+  .plot .yl{position:absolute;left:8px;font-family:var(--font-mono);font-size:11px;color:var(--text-muted)}
+  .plot .xl{position:absolute;top:calc(100% + 6px);font-family:var(--font-mono);font-size:11px;color:var(--text-muted);white-space:nowrap}
+  .mk{position:absolute;z-index:2}
+  .mk.news{transform:translate(-50%,-50%) translateY(-10px)}
+  .mk.rec{transform:translate(-50%,-50%) translateY(10px)}
+  .mk .dot{display:block;width:12px;height:12px;border:2px solid var(--surface);box-sizing:content-box;
+           background:var(--text-muted)}
+  .mk.news .dot{border-radius:50%}
+  .mk.rec .dot{background:var(--primary);transform:rotate(45deg);border-radius:2px;width:10px;height:10px}
+  .mk:hover,.mk:focus-within{z-index:10}
+  .mk .pop{left:50%;transform:translateX(-50%);top:calc(100% + 8px);font-size:12px}
+  .mk.r .pop{left:auto;right:-8px;transform:none}
+  .mk.l .pop{left:-8px;transform:none}
+  .mk.up .pop{top:auto;bottom:calc(100% + 8px)}
+  .mk:hover .pop,.mk:focus-within .pop{opacity:1;visibility:visible}
+  .chartbox:has(#mk-news:not(:checked)) .mk.news,
+  .chartbox:has(#mk-rec:not(:checked)) .mk.rec{display:none}
+  .lg{display:inline-block;width:10px;height:10px;background:var(--text-muted)}
+  .lg.news{border-radius:50%}
+  .lg.rec{background:var(--primary);transform:rotate(45deg);border-radius:2px;width:8px;height:8px}
   .sw{width:22px;height:13px;border-radius:4px;border:1px solid var(--border);background:var(--surface-2)}
   .sw.s{box-shadow:inset 2px 0 0 var(--primary)}
-  .sw.p{background:none;border-style:dashed}
 
   /* ---------------- up next: the book's next 90 days, first ----------------
      The question the product exists to answer, so it opens the page and spans
@@ -320,11 +353,26 @@ export const STYLE = `
           padding:5px 0;white-space:nowrap}
   .nx-csv:hover{text-decoration:underline}
   /* ---------------- a calendar day, opened in the headlines column ---------------- */
-  .dayhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;flex-wrap:wrap}
-  .dayhead h3{font-size:15px;font-family:var(--font-mono);font-weight:600;outline:none}
-  .dayhead .acts{display:flex;gap:8px;align-items:center}
-  .dayhead .acts a{font-family:var(--font-mono);font-size:11px;color:var(--primary-dark);text-decoration:none;padding:5px 0}
-  .dayhead .acts a:hover{text-decoration:underline}
+  /* ---------------- the right panel: one slider, two slides ----------------
+     Needs attention and this month's headlines are one panel with an arrow
+     between them, instead of two blocks stacked. Without script both slides
+     simply stack; with it, one shows at a time and the arrows slide between.
+     A calendar day swaps the whole panel and a second click on it swaps back. */
+  .feed{position:relative}
+  .feed-nav{display:none;position:absolute;top:20px;right:0;align-items:center;gap:4px;height:26px}
+  .js .feed-nav{display:flex}
+  .feed-arrow{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--surface);
+              color:var(--text-muted);font:600 16px/1 var(--font-ui);cursor:pointer;padding:0}
+  .feed-arrow:hover{color:var(--text);border-color:var(--border-strong)}
+  .feed-pos{font-size:12px;color:var(--text-muted);min-width:34px;text-align:center}
+  .feed .slide > .sh:first-child{margin-top:20px;padding-right:96px}
+  .js .feed .slide{display:none}
+  .js .feed .slide.on{display:block}
+  @keyframes feed-r{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+  @keyframes feed-l{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+  .feed .slide.in-r{animation:feed-r .24s var(--ease)}
+  .feed .slide.in-l{animation:feed-l .24s var(--ease)}
+  .sh h2:focus{outline:none}
   .cellwrap > a.picked > .cell{box-shadow:0 0 0 2px var(--primary);border-color:var(--primary)}
   .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px 13px;min-width:0}
@@ -347,11 +395,6 @@ export const STYLE = `
   .nx .r{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
   .nx .when{font-family:var(--font-mono);font-size:12px;white-space:nowrap}
   .nx .soon{color:var(--alert);font-weight:600}
-  /* The certainty column carries the chip's shape, so the three classes read
-     the same here as everywhere else on the page. */
-  .nx .cert{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:var(--text-muted);white-space:nowrap}
-  .nx tr.pred td{color:var(--text-muted)}
-  .nx .sw{width:16px;height:10px;border-color:var(--text-muted)}
   .nx .tickerlink{display:inline-block;padding:5px 0}
   .nx .more td{font-size:12px;color:var(--text-muted);text-align:center;white-space:normal}
   .nx td{white-space:nowrap}
@@ -367,6 +410,7 @@ export const STYLE = `
   .mtitle{font-size:16px;font-family:var(--font-mono);font-weight:600;margin-top:20px}
 
   /* --- which company's closes colour the grid */
+  .px-note{margin:0 0 10px;font-size:12px;color:var(--alert)}
   .pricefilter{display:flex;flex-wrap:wrap;gap:6px;align-items:center;
                scroll-margin-top:14px}
   .pricefilter label{font-family:var(--font-mono);font-size:11.5px;letter-spacing:.07em;
@@ -562,7 +606,6 @@ export const STYLE = `
   .att .flag.e{border-color:color-mix(in srgb,var(--alert) 45%,transparent);color:var(--alert);text-decoration:none}
   .att .flag.d{border-color:color-mix(in srgb,var(--down) 40%,transparent);color:var(--down)}
   .att .flag.u{border-color:color-mix(in srgb,var(--up) 40%,transparent);color:var(--up)}
-  .att .flag.w{border-style:dashed}
   /* the score as its parts. A single number nobody can decompose is the thing
      to avoid, so the bar is only ever a picture of the line beneath it. */
   .att .why{font-family:var(--font-mono);font-size:11px;color:var(--text-muted);margin-top:6px;
@@ -634,6 +677,19 @@ export const STYLE = `
     .genbar.busy .sp{animation:none;border-top-color:color-mix(in srgb,var(--primary) 35%,transparent)}
   }
   .genbar.busy button{cursor:progress}
+  /* ---- the button's tooltip: hover or keyboard focus, no script. Escape
+     dismisses it (WCAG 1.4.13), and it is gone while a generation runs. */
+  .has-tip{position:relative;display:inline-block}
+  .btip{position:absolute;z-index:30;left:0;top:calc(100% + 8px);width:min(380px,calc(100vw - 32px));
+        visibility:hidden;opacity:0;transition:opacity .12s var(--ease);pointer-events:none;
+        background:var(--surface-3);color:var(--text-muted);border:1px solid var(--border-strong);border-radius:10px;
+        padding:12px 14px;box-shadow:var(--shadow);font:400 12.5px/1.5 var(--font-ui);text-align:left;white-space:normal}
+  .btip b{display:block;color:var(--text);font-size:12px;font-weight:600;margin:10px 0 2px}
+  .btip b:first-child{margin-top:0}
+  .btip .fine{display:block;margin-top:10px;color:var(--text-muted);font-size:11.5px}
+  .has-tip:hover .btip,.has-tip:focus-within .btip,.has-tip:focus .btip{visibility:visible;opacity:1}
+  .has-tip.off .btip,.genbar.busy .btip{visibility:hidden;opacity:0}
+  .has-tip[tabindex]{outline-offset:3px;border-radius:999px;cursor:not-allowed}
   .genbar .wait{font-size:11.5px;color:var(--text-muted);display:none}
   .genbar.busy .wait{display:inline}
 
@@ -1025,25 +1081,89 @@ ${s.mock ? `<div class="mock"><b>MOCK_MODE</b> · fixture data, no API key, no n
     });
   });
 
-  // A calendar date opens in the headlines column instead of leaving the page.
-  // The cell stays a real link to /day, so a modified click, a middle click
-  // and a page with no script all still get the full day. The panel is the
-  // day page's own #day-panel, so there is one renderer for a day, not two.
+  // The right panel is a slider: Needs attention and the month's headlines,
+  // one at a time, with arrows between them. Delegated, because a calendar
+  // day swaps the panel's HTML and puts it back, and a listener on the old
+  // buttons would not survive that.
   (function () {
-    var col = document.querySelector('.dash-headlines');
+    var show = function (feed, i, dir) {
+      var slides = feed.querySelectorAll('.slide');
+      var n = slides.length;
+      if (!n) return;
+      i = (i + n) % n;
+      slides.forEach(function (sl, k) {
+        sl.classList.remove('in-l', 'in-r');
+        sl.classList.toggle('on', k === i);
+        if (k === i && dir) sl.classList.add(dir < 0 ? 'in-l' : 'in-r');
+      });
+      var pos = feed.querySelector('.feed-pos');
+      if (pos) pos.textContent = (i + 1) + ' / ' + n;
+      feed.querySelectorAll('.feed-arrow').forEach(function (b) {
+        var to = (i + Number(b.dataset.slide) + n) % n;
+        b.setAttribute('aria-label', (Number(b.dataset.slide) < 0 ? 'Previous: ' : 'Next: ') + slides[to].dataset.title);
+      });
+    };
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('.feed-arrow');
+      var feed = b && b.closest('.feed');
+      if (!feed) return;
+      var cur = 0;
+      feed.querySelectorAll('.slide').forEach(function (sl, k) { if (sl.classList.contains('on')) cur = k; });
+      show(feed, cur + Number(b.dataset.slide), Number(b.dataset.slide));
+    });
+    // A link into the headlines (its pager, or the #headlines anchor) lands
+    // on that slide rather than on the first one.
+    var f = document.querySelector('.feed');
+    if (f && (location.hash === '#headlines' || /[?&](p|who)=/.test(location.search))) {
+      show(f, 1, 0);
+      f.scrollIntoView({ block: 'start' });
+    }
+  })();
+
+  // A calendar date takes over the right panel instead of leaving the page,
+  // and clicking the same date again puts the panel back. The cell stays a
+  // real link to /day, so a modified click, a middle click and a page with no
+  // script all still get the full day. The panel is the day page's own
+  // #day-panel, so there is one renderer for a day, not two.
+  (function () {
+    var col = document.querySelector('.dash-feed');
     var grid = document.querySelector('.dash-month .grid');
     if (!col || !grid || !window.fetch || !window.DOMParser) return;
-    var month = null, from = null, seq = 0;
+    var saved = null, from = null, seq = 0;
+    // Up next follows the picked date: it counts forward from there instead of
+    // from today. It is its own fragment (/upnext), fetched alongside the day,
+    // and put back with the panel.
+    var nx = document.querySelector('.dash-next');
+    var nxSaved = null, nxDate = null, nseq = 0;
+    var follow = function (href) {
+      if (!nx) return;
+      var u = new URL(href, location.href), d = u.searchParams.get('date'), w = u.searchParams.get('w');
+      if (!d || d === nxDate) return; // paging the same day does not refetch
+      nxDate = d;
+      var mine = ++nseq;
+      fetch('/upnext?date=' + encodeURIComponent(d) + (w ? '&w=' + encodeURIComponent(w) : ''), { headers: { Accept: 'text/html' } })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function (html) {
+          if (mine !== nseq) return;
+          if (nxSaved === null) nxSaved = nx.innerHTML;
+          nx.innerHTML = html;
+        })
+        .catch(function () { nxDate = null; }); // the day panel still works without it
+    };
     var close = function () {
-      if (month === null) return;
-      col.innerHTML = month;
-      month = null;
+      seq++; // an answer still in flight must not reopen what was just closed
+      nseq++;
+      if (nxSaved !== null) { nx.innerHTML = nxSaved; nxSaved = null; }
+      nxDate = null;
+      if (saved === null) return;
+      col.innerHTML = saved;
+      saved = null;
       var a = grid.querySelector('a.picked');
       if (a) a.classList.remove('picked');
-      if (from) from.focus();
+      if (from) from.focus({ preventScroll: true });
     };
     var plain = function (e) { return e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey; };
-    // Load a day (or one page of its facts) into the column. The cell is the
+    // Load a day (or one page of its facts) into the panel. The cell is the
     // grid date it belongs to; paging keeps the same one.
     var open = function (href, cell) {
       var mine = ++seq;
@@ -1055,23 +1175,22 @@ ${s.mock ? `<div class="mock"><b>MOCK_MODE</b> · fixture data, no API key, no n
           var panel = doc.getElementById('day-panel');
           if (!panel) throw new Error('no panel');
           var title = (doc.querySelector('h2.mtitle') || {}).textContent || '';
-          if (month === null) month = col.innerHTML;
+          if (saved === null) saved = col.innerHTML;
+          follow(href);
           var old = grid.querySelector('a.picked');
           if (old) old.classList.remove('picked');
           cell.classList.add('picked');
           from = cell;
-          col.innerHTML = '<p class="kicker">This day · everything on it</p>' +
-            '<div class="dayhead"><h3 tabindex="-1"></h3><div class="acts">' +
-            '<a data-full>Open full day ↗</a>' +
-            '<button type="button" class="ghost" data-close>Close · back to the month</button></div></div>';
-          col.querySelector('h3').textContent = title;
+          col.innerHTML = '<div class="sh"><h2 tabindex="-1"></h2><span class="end">' +
+            '<a class="nx-csv" data-full>Open full day ↗</a>' +
+            '<button type="button" class="ghost" data-close>Close · back</button></span></div>';
+          col.querySelector('h2').textContent = title;
           col.querySelector('[data-full]').setAttribute('href', href);
           col.appendChild(panel);
           col.querySelector('[data-close]').addEventListener('click', close);
-          var h = col.querySelector('h3');
           var top = col.getBoundingClientRect().top;
           if (top < 0 || top > innerHeight - 80) col.scrollIntoView({ block: 'start' });
-          h.focus({ preventScroll: true });
+          col.querySelector('h2').focus({ preventScroll: true });
         })
         .catch(function () { location.href = href; });
     };
@@ -1079,13 +1198,18 @@ ${s.mock ? `<div class="mock"><b>MOCK_MODE</b> · fixture data, no API key, no n
       var a = e.target.closest('.cellwrap > a');
       if (!a || !plain(e)) return;
       e.preventDefault();
-      open(a.href, a);
+      if (saved !== null && a.classList.contains('picked')) close(); // second click: back
+      else open(a.href, a);
+    });
+    // "Back to today" in Up next is the same way out as closing the panel.
+    if (nx) nx.addEventListener('click', function (e) {
+      if (e.target.closest('[data-reset]')) close();
     });
     // The facts pager inside the panel: Newer / Older page in place too. Still
     // real links to /day, so a modified click opens that page in full.
     col.addEventListener('click', function (e) {
       var a = e.target.closest('#day-panel .pager a[href]');
-      if (!a || month === null || !from || !plain(e)) return;
+      if (!a || saved === null || !from || !plain(e)) return;
       e.preventDefault();
       open(a.href, from);
     });
@@ -1094,6 +1218,15 @@ ${s.mock ? `<div class="mock"><b>MOCK_MODE</b> · fixture data, no API key, no n
   // Generating takes seconds. Mark the form busy so the button says so, and
   // stop a second press from starting a second paid call. Disabling happens a
   // tick later so the submission itself is already under way.
+  // Escape closes an open tooltip without moving focus; it comes back on the
+  // next hover or focus.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    document.querySelectorAll('.has-tip').forEach(function (t) { t.classList.add('off'); });
+  });
+  document.querySelectorAll('.has-tip').forEach(function (t) {
+    ['mouseenter', 'focusin'].forEach(function (ev) { t.addEventListener(ev, function () { t.classList.remove('off'); }); });
+  });
   document.querySelectorAll('form.genbar').forEach(function (f) {
     f.addEventListener('submit', function () {
       if (f.classList.contains('busy')) return;
@@ -1111,7 +1244,7 @@ ${s.mock ? `<div class="mock"><b>MOCK_MODE</b> · fixture data, no API key, no n
 
 // ---------------------------------------------------------------- chips
 
-const CLASS_ATTR: Record<string, string> = { fact: "fact", scheduled: "sched", predicted: "pred" };
+const CLASS_ATTR: Record<string, string> = { fact: "fact", scheduled: "sched" };
 
 /**
  * The colour a headline is printed in: green for Sectors' `Bullish` tag, red
@@ -1159,32 +1292,10 @@ function tickerCell(item: Item, watchlist: string[]): string {
   return `<a class="tick tickerlink" href="/ticker${w}symbol=${esc(item.symbol)}">${esc(item.symbol)}</a>`;
 }
 
-/**
- * What a predicted chip says instead of a date.
- *
- * Three things, in this order: the window, the hit rate, and -- behind a
- * disclosure, because it is the working and not the answer -- how it was
- * fitted. The word "predicted" is in the text as well as in the shape, so the
- * class survives a screenshot, a screen reader and a compressed video.
- */
-function predictedBody(item: Item): string {
-  const f = item.fit!;
-  const rate = hitRateLabel(f);
-  return `<div class="note">Predicted window · ${esc(rate)}</div>
-    <details class="how"><summary>How we worked this out</summary>
-      <div class="note faint">Fitted from this company's own ${esc(kindLabel(item.kind).toLowerCase())}
-      history — ${f.n} past occurrence${f.n === 1 ? "" : "s"}, median day of year ±
-      ${f.spreadDays.toFixed(1)} days of typical drift. Scored walk-forward: each past
-      occurrence predicted from only the ones before it${f.trials >= 2 ? `, ${f.hits} of ${f.trials} landed inside` : ""}.
-      Nobody has published this date.</div>
-    </details>`;
-}
-
-/** One chip. Three classes, three shapes, and the tense is always in the text
+/** One chip. Two classes, two shapes, and the tense is always in the text
  * as well as the shape (plan.md §2, §12.1). */
 export function chip(item: Item, watchlist: string[] = []): string {
   const cls = CLASS_ATTR[item.cls] ?? "fact";
-  const predicted = item.cls === "predicted" && item.window && item.fit;
 
   // A fact's kind is what KIND of record it is; its title is what the record
   // says. Scheduled chips lead with the number that matters (the dividend),
@@ -1193,36 +1304,19 @@ export function chip(item: Item, watchlist: string[] = []): string {
   // show the year whenever it is not the current one.
   const stamp = (iso: string) =>
     iso.slice(0, 4) === todayIso().slice(0, 4) ? fmtShort(iso) : `${fmtShort(iso)} ${iso.slice(0, 4)}`;
-  // A predicted row renders a RANGE where the other two render a day. That is
-  // the whole point: we do not hold a date, so we must not print one.
-  const when = predicted
-    ? fmtRange(item.window!.from, item.window!.to)
-    : item.cls === "scheduled"
-      ? fmtWithDay(item.date!)
-      : stamp(item.date!);
-  const kind = predicted
-    ? `Predicted · ${kindLabel(item.kind)}`
-    : item.cls === "scheduled"
-      ? `Scheduled · ${kindLabel(item.kind)}`
-      : kindLabel(item.kind);
+  const when = item.cls === "scheduled" ? fmtWithDay(item.date!) : stamp(item.date!);
+  const kind = item.cls === "scheduled" ? `Scheduled · ${kindLabel(item.kind)}` : kindLabel(item.kind);
   const lead = item.cls === "fact" ? item.title : (item.detail ?? item.title);
   const host = domainOf(item.sourceUrl);
   const src = host
     ? ` · <a class="src" href="${esc(item.sourceUrl)}" rel="noreferrer noopener" target="_blank"
          title="Open the source at ${esc(host)}">${esc(host)} ↗</a>`
     : "";
-  const note = predicted
-    ? predictedBody(item)
-    : item.cls === "fact" && item.detail
-      ? `<div class="note">${esc(item.detail)}</div>`
-      : dropNote(item);
+  const note =
+    item.cls === "fact" && item.detail ? `<div class="note">${esc(item.detail)}</div>` : dropNote(item);
 
   return `<div class="chip ${cls}">
-    <span class="when">${
-      predicted
-        ? esc(when)
-        : `<time datetime="${esc(item.date)}">${esc(when)}</time>`
-    }</span>
+    <span class="when"><time datetime="${esc(item.date)}">${esc(when)}</time></span>
     ${tickerCell(item, watchlist)}
     <div class="what"><span class="kind">${esc(kind)}</span>
       <span class="${sentClass(item)}">${esc(lead)}</span>${src}
@@ -1293,7 +1387,7 @@ function pager(
 }
 
 /**
- * The key to the three shapes. Compact under a list; in full inside About.
+ * The key to the two shapes. Compact under a list; in full inside About.
  * Provenance is the product, so the short key is never dropped -- only the
  * sentences explaining it moved behind a click.
  */
@@ -1301,7 +1395,6 @@ function legend(full = false): string {
   const rows: [string, string, string][] = [
     ["sw", "Fact", "it happened, with the source it came from"],
     ["sw s", "Scheduled", "the issuer dated it"],
-    ["sw p", "Predicted", "fitted from the company's own history: a window, never a date, with the hit rate beside it"],
   ];
   return `<div class="key${full ? " full" : ""}">${rows
     .map(([c, k, d]) => `<span><i class="${c}"></i>${full ? `<span><b>${k}</b> — ${d}</span>` : k}</span>`)
@@ -1455,7 +1548,7 @@ export function filterBar(o: {
     ${topicField}
     <button type="submit" class="f-apply">Apply</button>
     ${narrowed ? `<a class="f-clear" href="${esc(url(o.company ? wl.join(",") : "", ""))}">${o.company ? "Clear topics" : "Clear filters"}</a>` : ""}
-    <span class="f-count mono">${esc(count)}</span>
+    <span class="f-count mono">${count}</span>
     ${
       unknown.length
         ? `<p class="f-warn">No rows on record for <b>${unknown.map((x) => esc(x)).join("</b>, <b>")}</b> —
@@ -1765,28 +1858,12 @@ function attentionSection(a: Attention, watchlist: string[]): string {
           t.symbols.length === 1 ? `${t.symbols[0]}'s` : "their"
         )} usual pickup</span>`);
       }
-      // The one component that makes this list this product's, and the one
-      // place a fitted window must never be printed as a date.
+      // The one component that makes this list this product's.
       if (r.near) {
         const when =
-          r.near.days === 0
-            ? r.near.cls === "predicted"
-              ? "inside its predicted"
-              : "on its"
-            : `${r.near.days} day${r.near.days === 1 ? "" : "s"} before its${
-                r.near.cls === "predicted" ? " predicted" : ""
-              }`;
-        const what =
-          r.near.cls === "predicted"
-            ? `${kindLabel(r.near.kind).toLowerCase()} window · ${esc(
-                fmtRange(r.near.window!.from, r.near.window!.to)
-              )}`
-            : `${kindLabel(r.near.kind).toLowerCase()} · ${esc(fmtShort(r.near.date))}`;
-        f.push(
-          `<a class="flag e${r.near.cls === "predicted" ? " w" : ""}" href="/day?date=${esc(
-            r.near.date
-          )}${w}">${when} ${what}</a>`
-        );
+          r.near.days === 0 ? "on its" : `${r.near.days} day${r.near.days === 1 ? "" : "s"} before its`;
+        const what = `${kindLabel(r.near.kind).toLowerCase()} · ${esc(fmtShort(r.near.date))}`;
+        f.push(`<a class="flag e" href="/day?date=${esc(r.near.date)}${w}">${when} ${what}</a>`);
       }
       if (t.split) {
         f.push(`<span class="flag">sources disagree · ${t.positive} bullish, ${t.negative} bearish</span>`);
@@ -2186,20 +2263,13 @@ const UP_NEXT_ROWS = 10;
 /**
  * The selected names' next 90 days, as four counts and one sorted table.
  *
- * Dated and predicted are counted apart in every tile: "4 events" that mixes
- * a published date with a fitted window is a number nobody can act on. The
- * names with nothing ahead are listed by name, because an empty calendar
+ * The names with nothing ahead are listed by name, because an empty calendar
  * for a holding is a finding, not a gap in the page.
  */
 export function upNext(items: Item[], watchlist: string[], today: string): string {
   const within = (n: number) => items.filter((i) => daysBetween(today, i.date!) < n);
-  const split = (xs: Item[]) => {
-    const p = xs.filter((i) => i.cls === "predicted").length;
-    return `${xs.length - p} dated${p ? ` · ${p} predicted` : ""}`;
-  };
   const ahead = (d: number) => (d <= 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`);
-  const when = (i: Item) =>
-    i.cls === "predicted" && i.window ? fmtRange(i.window.from, i.window.to) : fmtWithDay(i.date!);
+  const when = (i: Item) => fmtWithDay(i.date!);
 
   const first = items[0];
   const week = within(7);
@@ -2219,35 +2289,30 @@ export function upNext(items: Item[], watchlist: string[], today: string): strin
         ? tile(
             "Next up",
             `${esc(first.symbol)} <small>${esc(kindLabel(first.kind).toLowerCase())}</small>`,
-            `${first.cls === "predicted" ? "window opens " : ""}${ahead(daysBetween(today, first.date!))} · ${when(first)}`,
+            `${ahead(daysBetween(today, first.date!))} · ${when(first)}`,
             true
           )
-        : tile("Next up", "—", "nothing dated or predicted", true)
+        : tile("Next up", "—", "nothing dated", true)
     }
-    ${tile("Next 7 days", String(week.length), split(week))}
-    ${tile("Next 30 days", String(month.length), split(month))}
+    ${tile("Next 7 days", String(week.length), "dated by issuer")}
+    ${tile("Next 30 days", String(month.length), "dated by issuer")}
     ${tile(
       "Ex-dividend",
       String(divs.length),
-      biggest ? `largest drop ${fmtPct(biggest.drop!.pct)} · ${biggest.symbol}` : divs.length ? split(divs) : "none in 90 days"
+      biggest ? `largest drop ${fmtPct(biggest.drop!.pct)} · ${biggest.symbol}` : divs.length ? "dated by issuer" : "none in 90 days"
     )}
   </div>`;
 
   const row = (i: Item) => {
     const d = Math.max(0, daysBetween(today, i.date!));
-    const pred = i.cls === "predicted";
-    const cert = pred
-      ? `<span class="cert"><i class="sw p"></i>Predicted${i.fit ? ` · ${esc(hitRateLabel(i.fit))}` : ""}</span>`
-      : `<span class="cert"><i class="sw s"></i>Dated by issuer</span>`;
     const impact = i.drop
       ? `<span class="drop">${esc(fmtPct(i.drop.pct))}</span>`
       : `<span class="faint">—</span>`;
-    return `<tr class="${pred ? "pred" : "sched"}">
+    return `<tr>
       <td class="when">${esc(when(i))}</td>
-      <td class="r${d < 7 ? " soon" : ""}">${pred && i.window && i.window.from <= today ? "open" : `${d}d`}</td>
+      <td class="r${d < 7 ? " soon" : ""}">${d}d</td>
       <td>${tickerCell(i, watchlist)}</td>
       <td title="${esc(i.title)}">${esc(kindLabel(i.kind))}</td>
-      <td>${cert}</td>
       <td class="r" title="Ex-dividend only: dividend ÷ last close">${impact}</td>
     </tr>`;
   };
@@ -2255,28 +2320,36 @@ export function upNext(items: Item[], watchlist: string[], today: string): strin
   const table = items.length
     ? `<div class="nx-scroll"><table class="nx">
       <thead><tr><th>When</th><th class="r">In</th><th>Ticker</th><th>Event</th>
-        <th>Certainty</th><th class="r">Exp. drop</th></tr></thead>
+        <th class="r">Exp. drop</th></tr></thead>
       <tbody>${shown.map(row).join("")}${
         items.length > shown.length
-          ? `<tr class="more"><td colspan="6">+${items.length - shown.length} more in the 90 days — each ticker page carries its full list</td></tr>`
+          ? `<tr class="more"><td colspan="5">+${items.length - shown.length} more in the 90 days — each ticker page carries its full list</td></tr>`
           : ""
       }</tbody></table></div>`
-    : `<div class="empty">Nothing dated or predicted for ${watchlist.length ? "these companies" : "the market"} in the next 90 days.</div>`;
+    : `<div class="empty">Nothing dated for ${watchlist.length ? "these companies" : "the market"} in the next 90 days.</div>`;
 
-  const csv = `/upnext.csv${watchlist.length ? `?w=${encodeURIComponent(watchlist.join(","))}` : ""}`;
+  // Anchored when a calendar date has moved the list off today. The export
+  // follows it, so the file is the table you are looking at.
+  const anchored = today !== todayIso();
+  const csvQ = [watchlist.length ? `w=${encodeURIComponent(watchlist.join(","))}` : "", anchored ? `date=${today}` : ""]
+    .filter(Boolean)
+    .join("&");
+  const csv = `/upnext.csv${csvQ ? `?${csvQ}` : ""}`;
   return `${head("Up next", {
       sub: `${watchlist.length ? `your ${watchlist.length} compan${watchlist.length === 1 ? "y" : "ies"}` : "every company on record"} · ${esc(
         fmtShort(today)
       )}–${esc(fmtShort(shift(today, 90)))}`,
-      end: items.length ? `<a class="nx-csv" href="${esc(csv)}" download>Download CSV</a>` : "",
+      end: `${
+        anchored ? `<button type="button" class="ghost" data-reset>Back to today</button>` : ""
+      }${items.length ? `<a class="nx-csv" href="${esc(csv)}" download>Download CSV</a>` : ""}`,
     })}
     ${kpis}
     ${table}
     ${
       quiet.length
-        ? `<p class="note">Nothing on the calendar for <b>${quiet.map(esc).join(", ")}</b> — no date published and no rhythm we could fit.</p>`
+        ? `<p class="note">Nothing on the calendar for <b>${quiet.map(esc).join(", ")}</b> — no date published.</p>`
         : ""
-    }${watchlist.length ? "" : `<p class="note">Add companies in the bar above to see predicted windows for them too.</p>`}`;
+    }`;
 }
 
 /**
@@ -2294,26 +2367,83 @@ export function upNextCsv(items: Item[], today: string): string {
     if (typeof v === "string" && /^[=+\-@\t\r]/.test(t)) t = `'${t}`;
     return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
   };
-  const head = ["date", "window_from", "window_to", "days_to_go", "ticker", "event", "title",
-    "certainty", "hit_rate", "expected_drop_pct", "last_close", "source_url"];
-  const rows = items.map((i) => {
-    const pred = i.cls === "predicted";
-    return [
-      pred ? "" : i.date,
-      pred ? i.window?.from : "",
-      pred ? i.window?.to : "",
+  const head = ["date", "days_to_go", "ticker", "event", "title",
+    "expected_drop_pct", "last_close", "source_url"];
+  const rows = items.map((i) =>
+    [
+      i.date,
       Math.max(0, daysBetween(today, i.date!)),
       i.symbol,
       kindLabel(i.kind),
       i.title,
-      pred ? "predicted" : "dated by issuer",
-      pred && i.fit && i.fit.trials >= 2 ? `${i.fit.hits}/${i.fit.trials}` : "",
       i.drop ? Number((i.drop.pct * 100).toFixed(2)) : "",
       i.drop ? i.drop.close : "",
       i.sourceUrl ?? "",
-    ].map(cell).join(",");
-  });
+    ].map(cell).join(",")
+  );
   return [head.join(","), ...rows].join("\r\n") + "\r\n";
+}
+
+/** The Monday-first week header and the day cells, for any page that draws a
+ * month: the agenda and a company's own calendar view. */
+function monthGrid(cells: Cell[], w: string, mock: boolean): string {
+  const dow = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+    .map((d) => `<span>${d}</span>`)
+    .join("");
+  const now = todayIso();
+  const grid = cells
+    .map((c) => {
+      const marks = c.marks
+        .map((m) => `<span class="mini${m.cls === "scheduled" ? " s" : ""}">${esc(m.label)}</span>`)
+        .join("");
+      const dots = c.marks.map((m) => `<i class="${m.cls === "scheduled" ? "s" : ""}"></i>`).join("");
+      const bands = c.priceOf === "index" ? INDEX_BANDS : EQUITY_BANDS;
+      const classes = ["cell", c.weekend ? "wknd" : "", c.inMonth ? "" : "out", c.today ? "today" : "", priceBand(c.change, bands)]
+        .filter(Boolean)
+        .join(" ");
+      const price =
+        c.close != null
+          ? `<div class="px"><span class="c">${esc(c.close.toLocaleString("en-US"))}</span>
+             <span class="d">${c.change == null ? "" : pct(c.change)}</span></div>`
+          : "";
+      // The hover card. Everything it shows is already in the page, so it
+      // costs a pointer move rather than a round trip.
+      //
+      // A day with nothing on it gets one too, as long as it is still ahead:
+      // an empty date in the future is exactly where you want to park your own
+      // reminder to check. Empty days behind you get nothing -- there is
+      // nothing to say and nothing to diarise.
+      const pop = c.items.length || c.date >= now
+        ? `<div class="pop" role="note"><h4>${esc(fmtWithDay(c.date))}</h4>
+           <ul>${
+             c.items.length
+               ? c.items
+            .map(
+              (i) =>
+                `<li class="${i.cls === "scheduled" ? "s" : ""}"><span class="k">${esc(kindLabel(i.kind))}</span>
+                 <span class="${sentClass(i)}">${i.symbol ? `<b>${esc(i.symbol)}</b> ` : ""}${esc(i.title)}</span></li>`
+            )
+            .join("")
+               : `<li class="p">Nothing on record for this day.</li>`
+           }</ul>${
+            c.total > c.items.length
+              ? `<div class="more">+${c.total - c.items.length} more · click for the full day</div>`
+              : ""
+          }<a class="gcal" href="${esc(gcalUrl(c, mock))}" target="_blank" rel="noopener noreferrer"
+             >+ Google Calendar</a></div>`
+        : "";
+      const inner = `<div class="${classes}"${c.today ? ' aria-current="date"' : ""}>
+        <span class="d">${c.day}${c.today ? " · today" : ""}</span>
+        ${marks}${c.overflow ? `<span class="more">+${c.overflow}</span>` : ""}
+        <div class="dots">${dots}</div>
+        ${price}
+      </div>`;
+      // The card holds a link of its own, so it sits beside the day link
+      // rather than inside it -- nested anchors are not HTML.
+      return `<div class="cellwrap"><a href="/day?date=${c.date}${w}">${inner}</a>${pop}</div>`;
+    })
+    .join("");
+  return `<div class="dow">${dow}</div><div class="grid">${grid}</div>`;
 }
 
 export function renderMonth(
@@ -2334,6 +2464,15 @@ export function renderMonth(
     /** The selected names' next 90 days. Absent renders nothing: the tests
      * that build a bare month have no database to ask. */
     upcoming?: Item[];
+    /** Said above the grid when the strip is pricing a different subject than
+     * the one asked for, because that one has no closes on record. */
+    priceNote?: string | null;
+    /** The date the strip subject's closes run to, so a month that outruns
+     * the record reads as "no data yet" and not as a broken strip. */
+    priceThrough?: string | null;
+    /** Companies holding closes, offered in the picker only when the indices
+     * hold none -- otherwise the picker stays the selection plus the indices. */
+    priceHeld?: string[];
   }
 ): string {
   const w = watchlist.length ? `&w=${encodeURIComponent(watchlist.join(","))}` : "";
@@ -2375,69 +2514,19 @@ export function renderMonth(
             ? `<optgroup label="Companies">${watchlist.map((s) => opt(s, s)).join("")}</optgroup>`
             : ""
         }
+        ${
+          opts.priceHeld?.length
+            ? `<optgroup label="Closes on record">${opts.priceHeld.map((s) => opt(s, s)).join("")}</optgroup>`
+            : ""
+        }
       </select>
       <button type="submit" class="autobtn">Show</button>
     </form>`;
   const prev = shift(`${ym}-01`, -1).slice(0, 7);
   const next = shift(`${ym}-01`, 32).slice(0, 7);
-  const dow = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
-    .map((d) => `<span>${d}</span>`)
-    .join("");
-
-  const now = todayIso();
-  const grid = cells
-    .map((c) => {
-      const marks = c.marks
-        .map((m) => `<span class="mini${m.cls === "scheduled" ? " s" : ""}">${esc(m.label)}</span>`)
-        .join("");
-      const dots = c.marks.map((m) => `<i class="${m.cls === "scheduled" ? "s" : ""}"></i>`).join("");
-      const bands = c.priceOf === "index" ? INDEX_BANDS : EQUITY_BANDS;
-      const classes = ["cell", c.weekend ? "wknd" : "", c.inMonth ? "" : "out", c.today ? "today" : "", priceBand(c.change, bands)]
-        .filter(Boolean)
-        .join(" ");
-      const price =
-        c.close != null
-          ? `<div class="px"><span class="c">${esc(c.close.toLocaleString("en-US"))}</span>
-             <span class="d">${c.change == null ? "" : pct(c.change)}</span></div>`
-          : "";
-      // The hover card. Everything it shows is already in the page, so it
-      // costs a pointer move rather than a round trip.
-      //
-      // A day with nothing on it gets one too, as long as it is still ahead:
-      // an empty date in the future is exactly where you want to park your own
-      // reminder to check. Empty days behind you get nothing -- there is
-      // nothing to say and nothing to diarise.
-      const pop = c.items.length || c.date >= now
-        ? `<div class="pop" role="note"><h4>${esc(fmtWithDay(c.date))}</h4>
-           <ul>${
-             c.items.length
-               ? c.items
-            .map(
-              (i) =>
-                `<li class="${i.cls === "scheduled" ? "s" : ""}"><span class="k">${esc(kindLabel(i.kind))}</span>
-                 <span class="${sentClass(i)}">${i.symbol ? `<b>${esc(i.symbol)}</b> ` : ""}${esc(i.title)}</span></li>`
-            )
-            .join("")
-               : `<li class="p">Nothing on record for this day.</li>`
-           }</ul>${
-            c.total > c.items.length
-              ? `<div class="more">+${c.total - c.items.length} more · click for the full day</div>`
-              : ""
-          }<a class="gcal" href="${esc(gcalUrl(c, opts.mock))}" target="_blank" rel="noopener noreferrer"
-             >+ Google Calendar</a></div>`
-        : "";
-      const inner = `<div class="${classes}"${c.today ? ' aria-current="date"' : ""}>
-        <span class="d">${c.day}${c.today ? " · today" : ""}</span>
-        ${marks}${c.overflow ? `<span class="more">+${c.overflow}</span>` : ""}
-        <div class="dots">${dots}</div>
-        ${price}
-      </div>`;
-      // The card holds a link of its own, so it sits beside the day link
-      // rather than inside it -- nested anchors are not HTML.
-      return `<div class="cellwrap"><a href="/day?date=${c.date}${w}">${inner}</a>${pop}</div>`;
-    })
-    .join("");
-
+  // Paging months keeps the strip's subject -- unless it was a fallback the
+  // server picked (priceNote), which should not become the reader's choice.
+  const pricePin = opts.priceSymbol && !opts.priceNote ? `&price=${encodeURIComponent(opts.priceSymbol)}` : "";
   const tag = opts.pulse.tag;
   return page({
     title: "NewsIDX Agenda",
@@ -2466,6 +2555,7 @@ export function renderMonth(
     <section class="dash-month">
     ${head(monthLabel(ym), {
       id: "month",
+      sub: priced && opts.priceThrough ? `${esc(priced)} closes to ${esc(fmtShort(opts.priceThrough))}` : undefined,
       info: info(
         "i-month",
         "The month",
@@ -2489,17 +2579,24 @@ export function renderMonth(
       ),
       end: priceFilter,
     })}
+    ${opts.priceNote ? `<p class="px-note">${esc(opts.priceNote)}</p>` : ""}
     <nav class="pager" aria-label="Month">
-      ${step("prev", `/?month=${prev}${w}`, "Previous", monthLabel(prev))}
-      ${step("next", `/?month=${next}${w}`, "Next", monthLabel(next))}
+      ${step("prev", `/?month=${prev}${w}${pricePin}`, "Previous", monthLabel(prev))}
+      ${step("next", `/?month=${next}${w}${pricePin}`, "Next", monthLabel(next))}
     </nav>
-    <div class="dow">${dow}</div>
-    <div class="grid">${grid}</div>
+    ${monthGrid(cells, w, opts.mock)}
     ${legend()}
     </section>
     </div><div class="dash-col">
-    <section class="dash-attention">${attentionSection(opts.attention, watchlist)}</section>
-    <section class="dash-headlines">${pulseSection(opts.pulse, watchlist, { month: ym, price: opts.priceSymbol ?? undefined })}</section>
+    <section class="dash-feed"><div class="feed">
+      <div class="feed-nav" role="group" aria-label="Switch panel">
+        <button type="button" class="feed-arrow" data-slide="-1" aria-label="Previous: Headlines">‹</button>
+        <span class="feed-pos mono" aria-live="polite">1 / 2</span>
+        <button type="button" class="feed-arrow" data-slide="1" aria-label="Next: Headlines">›</button>
+      </div>
+      <div class="slide on" data-title="Needs attention">${attentionSection(opts.attention, watchlist)}</div>
+      <div class="slide" data-title="Headlines">${pulseSection(opts.pulse, watchlist, { month: ym, price: opts.priceSymbol ?? undefined })}</div>
+    </div></section>
     </div></div>`,
   });
 }
@@ -2638,23 +2735,61 @@ function faqSection(t: Timeline, watchlist: string[], faq: FaqView): string {
   const hidden = `<input type="hidden" name="symbol" value="${esc(t.symbol)}">
        ${w ? `<input type="hidden" name="w" value="${esc(w)}">` : ""}`;
 
-  const genButton = (label: string, opts: { force?: boolean; disabled?: boolean; title?: string } = {}) =>
+  // The tooltip every state of the button carries: what happened, what will be
+  // generated, how, and what it costs. It is the same text as the page's own
+  // footnote, put where the question "what does this button do?" is asked.
+  const stamp = faq.row ? `${faq.row.generated_at.replace("T", " ").slice(0, 16)} UTC` : "";
+  const fixtures = faq.model === "fixtures";
+  const happened = faq.error
+    ? `The last attempt failed: ${esc(faq.error)}. Nothing was stored, and pressing again tries again.`
+    : !faq.available
+      ? `Generation is switched off — ${esc(faq.why ?? "no model configured")}. Set it and restart to enable the button.`
+      : !faq.row
+        ? `Nothing has been generated for ${esc(t.symbol)} yet.`
+        : faq.stale
+          ? `Generated ${esc(stamp)} by ${esc(faq.row.model)}, but ${esc(t.symbol)} has newer rows on record since. This briefing does not include them.`
+          : `Generated ${esc(stamp)} by ${esc(faq.row.model)}. The rows have not changed since, so it is current.`;
+  const tip = `<span class="btip" role="tooltip" id="faq-tip">
+      <b>What happened</b>${happened}
+      <b>What it generates</b>A news summary of two to four paragraphs, then five questions a reader of this
+      record would ask, each with a short answer. Every statement cites the rows it rests on, as links.
+      <b>How it is produced</b>${
+        fixtures
+          ? `MOCK_MODE is on: there is no model and no network, so the text is a fixed fixture and every sentence of it is fabricated.`
+          : `${esc(faq.model)} reads the ${esc(faq.rows)} rows on record for ${esc(t.symbol)} — filings, dated events and
+             headlines — and nothing else. It does not browse and does not recall: a figure, name or date not in a row
+             cannot appear. The source links are attached by us from the stored rows, never written by the model.`
+      }
+      <b>Cost</b>${
+        !faq.available
+          ? "None while it is off."
+          : faq.row && !faq.stale
+            ? "Reopening this page is free, because the text is stored. Regenerate rewrites it from the same rows and spends one more model call."
+            : "One model call, a few seconds. The result is stored per company, so every later visit is free until new rows arrive."
+      }
+      <span class="fine">Generated text, not investment advice.</span>
+    </span>`;
+
+  const genButton = (label: string, opts: { force?: boolean; disabled?: boolean } = {}) =>
     `<form class="genbar" method="post" action="/ticker/faq">
        ${hidden}
        ${opts.force ? `<input type="hidden" name="force" value="1">` : ""}
-       <button type="submit"${opts.disabled ? " disabled" : ""}${opts.title ? ` title="${esc(opts.title)}"` : ""}>
-         <span class="sp" aria-hidden="true"></span>${AI_MARK}<span class="t-idle">${esc(label)}</span><span class="t-busy">Generating…</span>
-       </button>
+       <span class="has-tip"${opts.disabled ? ' tabindex="0"' : ""}>
+         <button type="submit"${opts.disabled ? " disabled" : ""} aria-describedby="faq-tip">
+           <span class="sp" aria-hidden="true"></span>${AI_MARK}<span class="t-idle">${esc(label)}</span><span class="t-busy">Generating…</span>
+         </button>
+         ${tip}
+       </span>
        <span class="wait">asking ${esc(faq.model)} — a few seconds</span>
      </form>`;
 
   const control = !faq.available
-    ? genButton("Generate", { disabled: true, title: faq.why ?? "generation is unavailable" })
+    ? genButton("Generate", { disabled: true })
     : !faq.row
       ? genButton("Generate the briefing")
       : faq.stale
         ? genButton("Regenerate — there are newer rows", { force: true })
-        : genButton("Regenerate", { force: true, title: "Rewrites from the same rows, and spends a call" });
+        : genButton("Regenerate", { force: true });
 
   const meta = faq.row
     ? `<p class="note faint">Generated <b>${esc(faq.row.generated_at.replace("T", " ").slice(0, 16))} UTC</b>
@@ -2761,28 +2896,86 @@ export interface FaqView {
 }
 
 /**
- * The windows we did NOT draw, and why.
+ * The price line with the days something was published hung on it.
  *
- * A refusal is a result (METHODOLOGY.md §4). Silently omitting one would leave
- * the page looking like a company with no rhythm and a company whose rhythm we
- * rejected are the same thing, and they are not. This is also the honest half
- * of the hit rate: a product that only ever shows its successful fits is
- * reporting a number it has already filtered.
+ * Every marker is a real link to that day, and its card says what landed and
+ * what the close was -- the same facts the lists carry, placed where they sit
+ * against the price. Not a claim that either moved the other: a story and a
+ * move on the same date is co-occurrence, and the page says so.
  */
-function refusals(rows: Timeline["refusals"]): string {
-  if (!rows.length) return "";
-  return `<p class="kicker">No window drawn</p>
-    <div class="rows">${rows
-      .map(
-        (r) => `<div class="chip fact">
-          <span class="when faint">—</span>
-          <span class="tick faint">no fit</span>
-          <div class="what"><span class="kind">${esc(kindLabel(r.kind))}</span>
-            <span class="faint">${esc(r.reason)}</span></div>
-        </div>`
-      )
-      .join("")}</div>
-    <p class="note faint">A window we cannot defend is stated, not widened.</p>`;
+function chartBody(c: Chart, w: string): string {
+  if (!c.points.length) {
+    return `${head("Price")}<div class="empty">No closes on record for ${esc(c.symbol)} in the last 90 days, so there is no line to mark.</div>`;
+  }
+  const t0 = Date.parse(c.from);
+  const t1 = Math.max(Date.parse(c.to), t0 + 864e5);
+  const lo = Math.min(...c.points.map((p) => p.close));
+  const hi = Math.max(...c.points.map((p) => p.close));
+  const X = (d: string) => ((Date.parse(d) - t0) / (t1 - t0)) * 100;
+  // 8% breathing room top and bottom, so the line never touches the frame.
+  const Y = (v: number) => 8 + (hi === lo ? 0.5 : 1 - (v - lo) / (hi - lo)) * 84;
+  const xy = c.points.map((p) => `${(X(p.date) * 10).toFixed(1)},${(Y(p.close) * 3).toFixed(1)}`);
+  const lastX = (X(c.points[c.points.length - 1].date) * 10).toFixed(1);
+  const firstX = (X(c.points[0].date) * 10).toFixed(1);
+  const fmtClose = (n: number) => n.toLocaleString("en-US");
+
+  const wq = `&w=${encodeURIComponent(c.symbol)}`;
+  const card = (m: ChartMark, items: Item[]) => {
+    const shown = items.slice(0, 4);
+    return `<div class="pop" role="note"><h4>${esc(fmtWithDay(m.date))} · close ${esc(fmtClose(m.close))}</h4>
+      <ul>${shown
+        .map(
+          (i) => `<li><span class="k">${esc(kindLabel(i.kind))}</span>
+            <span class="${sentClass(i)}">${esc(i.title)}</span></li>`
+        )
+        .join("")}</ul>${
+      items.length > shown.length ? `<div class="more">+${items.length - shown.length} more · click for the full day</div>` : ""
+    }</div>`;
+  };
+  const marker = (m: ChartMark, kind: "news" | "rec", items: Item[]) => {
+    if (!items.length) return "";
+    const x = X(m.date);
+    const y = Y(m.close);
+    const side = x > 60 ? " r" : x < 40 ? " l" : "";
+    const label = `${fmtWithDay(m.date)}: ${items.length} ${kind === "news" ? "headline" : "filing or action"}${items.length === 1 ? "" : "s"}`;
+    return `<span class="mk ${kind}${side}${y > 55 ? " up" : ""}" style="left:${x.toFixed(2)}%;top:${y.toFixed(2)}%">
+      <a class="dot" href="${esc(`/day?date=${m.date}${wq}`)}" aria-label="${esc(label)}"></a>${card(m, items)}</span>`;
+  };
+
+  const nNews = c.marks.reduce((n, m) => n + m.news.length, 0);
+  const nRec = c.marks.reduce((n, m) => n + m.record.length, 0);
+  const mid = new Date((t0 + t1) / 2).toISOString().slice(0, 10);
+
+  return `${head("Price", {
+      sub: `${esc(c.symbol)} closes ${esc(fmtShort(c.points[0].date))}–${esc(fmtShort(c.points[c.points.length - 1].date))}`,
+    })}
+    <div class="chartbox">
+      <div class="chartopts" role="group" aria-label="Markers on the line">
+        <label><input type="checkbox" id="mk-news" checked><i class="lg news"></i> News · ${nNews}</label>
+        <label><input type="checkbox" id="mk-rec" checked><i class="lg rec"></i> Filings &amp; actions · ${nRec}</label>
+      </div>
+      <div class="plot">
+        <svg viewBox="0 0 1000 300" preserveAspectRatio="none" role="img"
+             aria-label="${esc(c.symbol)} close, ${esc(fmtClose(lo))} to ${esc(fmtClose(hi))}">
+          <line class="gl" x1="0" x2="1000" y1="${Y(hi) * 3}" y2="${Y(hi) * 3}"/>
+          <line class="gl" x1="0" x2="1000" y1="${Y(lo) * 3}" y2="${Y(lo) * 3}"/>
+          <polygon class="ar" points="${firstX},300 ${xy.join(" ")} ${lastX},300"/>
+          <polyline class="ln" points="${xy.join(" ")}"/>
+        </svg>
+        <span class="yl" style="top:calc(${Y(hi)}% - 16px)">${esc(fmtClose(hi))}</span>
+        <span class="yl" style="top:calc(${Y(lo)}% + 3px)">${esc(fmtClose(lo))}</span>
+        ${c.marks.map((m) => marker(m, "news", m.news) + marker(m, "rec", m.record)).join("")}
+        <span class="xl" style="left:0">${esc(fmtShort(c.from))}</span>
+        <span class="xl" style="left:50%;transform:translateX(-50%)">${esc(fmtShort(mid))}</span>
+        <span class="xl" style="right:0">${esc(fmtShort(c.to))}</span>
+      </div>
+      <p class="note">Hover or tab to a marker for what was published that day. A story and a move on
+        the same date are co-occurrence, not cause.${
+          c.points[c.points.length - 1].date < c.to
+            ? ` Closes run to ${esc(fmtShort(c.points[c.points.length - 1].date))}; later markers sit at that last close.`
+            : ""
+        }</p>
+    </div>`;
 }
 
 export function renderTicker(
@@ -2797,16 +2990,88 @@ export function renderTicker(
     known?: string[];
     /** The Topic filter, shared with the agenda. */
     tag?: string;
+    /** How the record is laid out. A list by default; `calendar` draws `cells`
+     * as a month grid for the one company. */
+    view?: "list" | "calendar" | "chart";
+    /** YYYY-MM of the grid on screen, and the cells for it. */
+    month?: string;
+    cells?: Cell[];
+    /** The price line for `view: "chart"`. */
+    chart?: Chart;
   }
 ): string {
   const tag = opts.tag ?? "";
-  // Same rule the calendar grid uses: a topic narrows NEWS and leaves the rest
-  // alone. A filing carries no tags, and dropping every dated action because
-  // the reader picked "Dividend" would empty the page rather than narrow it.
-  const keep = (i: Item) => i.kind !== "news" || matchesTag(i, tag);
-  const ahead = t.ahead.filter(keep);
-  const behind = paginate(t.behind.filter(keep), opts.page ?? 1);
-  const shown = t.behind.filter((i) => i.kind === "news" && matchesTag(i, tag)).length;
+  const view =
+    opts.view === "calendar" && opts.cells && opts.month
+      ? "calendar"
+      : opts.view === "chart" && opts.chart
+        ? "chart"
+        : "list";
+  const ym = opts.month ?? todayIso().slice(0, 7);
+  const w0 = watchlist.join(",");
+  // Every link on this page keeps the company, the selection, the topic and the
+  // layout, so switching one never silently drops another.
+  const url = (o: { view?: string; month?: string; p?: number } = {}) => {
+    const q = new URLSearchParams({ symbol: t.symbol });
+    if (w0) q.set("w", w0);
+    if (tag) q.set("tag", tag);
+    const v = o.view ?? view;
+    if (v === "calendar") {
+      q.set("view", "calendar");
+      q.set("month", o.month ?? ym);
+    } else if (v === "chart") {
+      q.set("view", "chart");
+    }
+    return `/ticker?${q.toString()}`;
+  };
+  const switcher = `<span class="vswitch" role="group" aria-label="Layout">
+    <a href="${esc(url({ view: "list" }))}"${view === "list" ? ' aria-current="page"' : ""}>List</a>
+    <a href="${esc(url({ view: "calendar" }))}"${view === "calendar" ? ' aria-current="page"' : ""}>Calendar</a>
+    <a href="${esc(url({ view: "chart" }))}"${view === "chart" ? ' aria-current="page"' : ""}>Chart</a></span>`;
+  // A topic is Sectors' tag on a NEWS story. Filings, dividends and meetings
+  // carry no tags, so they are their own list that the topic never touches --
+  // mixed into one list, they read as a filter that did not work.
+  const record = t.behind.filter((i) => i.kind !== "news");
+  const news = paginate(t.behind.filter((i) => i.kind === "news" && matchesTag(i, tag)), opts.page ?? 1);
+  const shown = news.total;
+  const RECORD_SHOWN = 5;
+
+  const listBody = () => `<details class="fold" open>
+      <summary><span class="kicker">Filings &amp; corporate actions${record.length ? ` · ${record.length}` : ""}</span>
+        <span class="faint">not filtered by topic</span></summary>
+      ${
+        record.length
+          ? `<div class="rows">${record.slice(0, RECORD_SHOWN).map((i) => chip(i, watchlist)).join("")}</div>${
+              record.length > RECORD_SHOWN
+                ? `<details class="more-rows"><summary class="note">Show ${record.length - RECORD_SHOWN} older</summary>
+                   <div class="rows">${record.slice(RECORD_SHOWN).map((i) => chip(i, watchlist)).join("")}</div></details>`
+                : ""
+            }`
+          : `<div class="empty">No filings or corporate actions on record for this name yet.</div>`
+      }</details>
+      <details class="fold" open>
+      <summary><span class="kicker">News${news.total ? ` · ${news.total}` : ""}</span>${
+        tag ? `<span class="faint">tagged ${tagPhrase(tag)}</span>` : ""
+      }</summary>
+      ${
+        news.items.length
+          ? `<div class="rows">${news.items.map((i) => chip(i, watchlist)).join("")}</div>
+             ${pager("/ticker", { symbol: t.symbol, w: w0 || undefined, tag: tag || undefined }, news)}`
+          : `<div class="empty">${tag ? `No headlines tagged ${tagPhrase(tag)}.` : "No news on record for this name yet."}</div>`
+      }</details>`;
+
+  // The same grid the agenda draws, for this one company. The topic narrows its
+  // headlines exactly as it does in the list; filings and dividends stay.
+  const calendarBody = () => {
+    const prev = shift(`${ym}-01`, -1).slice(0, 7);
+    const next = shift(`${ym}-01`, 32).slice(0, 7);
+    return `${head(monthLabel(ym))}
+      <nav class="pager" aria-label="Month">
+        ${step("prev", url({ month: prev }), "Previous", monthLabel(prev))}
+        ${step("next", url({ month: next }), "Next", monthLabel(next))}
+      </nav>
+      ${monthGrid(opts.cells!, w0 ? `&w=${encodeURIComponent(w0)}` : "", opts.mock)}`;
+  };
 
   return page({
     title: `NewsIDX ${t.symbol}`,
@@ -2840,20 +3105,13 @@ export function renderTicker(
           : ""
       }
       <div class="dash"><section class="dash-col">
-      ${head("Ahead")}
+      ${head("Ahead", { end: switcher })}
       ${
-        ahead.length
-          ? `<div class="rows">${ahead.map((i) => chip(i, watchlist)).join("")}</div>`
-          : `<div class="empty">Nothing the issuer has dated ahead for this name, and no rhythm we would draw a window from.</div>`
+        t.ahead.length
+          ? `<div class="rows">${t.ahead.map((i) => chip(i, watchlist)).join("")}</div>`
+          : `<div class="empty">Nothing the issuer has dated ahead for this name.</div>`
       }
-      ${refusals(t.refusals)}
-      <p class="kicker">Behind${behind.total ? ` · ${behind.total}` : ""}</p>
-      ${
-        behind.items.length
-          ? `<div class="rows">${behind.items.map((i) => chip(i, watchlist)).join("")}</div>
-             ${pager("/ticker", { symbol: t.symbol, w: watchlist.join(",") || undefined, tag: tag || undefined }, behind)}`
-          : `<div class="empty">No facts on record for this name yet.</div>`
-      }
+      ${view === "calendar" ? calendarBody() : view === "chart" ? chartBody(opts.chart!, w0) : listBody()}
       ${legend()}
       </section>
       <section class="dash-col">${faqSection(t, watchlist, opts.faq)}</section>

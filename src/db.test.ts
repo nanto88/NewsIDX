@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { connect, creditsSpent, endRun, eventsInRange, getFaq, startRun, upsertEvents } from "./db.js";
+import { connect, creditsSpent, endRun, eventsInRange, getFaq, pricedSymbols, startRun, upsertEvents, upsertPrices } from "./db.js";
 
 const fresh = () => connect(path.join(mkdtempSync(path.join(tmpdir(), "fw-")), "t.db"));
 
@@ -135,4 +135,17 @@ test("a day's board is replaced by a new fetch, never merged, and never wiped by
     "a name that left the snapshot leaves the board");
   upsertBoard(con, []);
   assert.equal(boardOn(con, "2026-09-30").length, 1, "and a failed call keeps what we had");
+});
+
+test("the price strip can ask which symbols already hold closes in a window, and never buys any", () => {
+  const con = fresh();
+  upsertPrices(con, "BBCA", [
+    { date: "2026-09-28", close: 9000, volume: null },
+    { date: "2026-09-29", close: 9100, volume: null },
+  ]);
+  upsertPrices(con, "ANTM", [{ date: "2026-09-29", close: 3000, volume: null }]);
+  upsertPrices(con, "OLD", [{ date: "2026-01-02", close: 1, volume: null }]);
+  const held = pricedSymbols(con, "2026-09-01", "2026-10-31");
+  assert.deepEqual(held.map((h) => [h.symbol, h.n, h.last]), [["BBCA", 2, "2026-09-29"], ["ANTM", 1, "2026-09-29"]]);
+  assert.deepEqual(pricedSymbols(con, "2026-11-01", "2026-11-30"), [], "a window with no closes is empty, not borrowed");
 });
