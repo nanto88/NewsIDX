@@ -1,0 +1,526 @@
+<!-- Classification: PUBLIC -->
+> Full reference (design rationale, credit strategy, UI details). The short README is [../README.md](../README.md).
+
+# NewsIDX
+
+### Know which of your IDX holdings has an event coming, before the price tells you
+
+Most of us find out our stock had an event when we open the app and see a gap. The dividend
+went ex yesterday. The general meeting was last week. Three of your names reported in the same
+five days and you only noticed the one that moved.
+
+**Track 03, Market Intelligence.** Built on the Sectors API v2.
+
+```bash
+npm install && npm run demo && npm run demo:serve
+```
+
+Open <http://localhost:3000>. No API key, no network, nothing to sign up for.
+
+---
+
+## Table of Contents
+
+1. [Overview](#1-overview)
+2. [Key Features](#2-key-features)
+3. [Architecture](#3-architecture)
+4. [Quick Setup (< 5 Minutes)](#4-quick-setup--5-minutes)
+5. [CLI Usage](#5-cli-usage)
+6. [Configuration](#6-configuration)
+7. [Sectors API Integration](#7-sectors-api-integration)
+8. [Certainty Rules](#8-certainty-rules)
+9. [Web Dashboard](#9-web-dashboard)
+10. [Testing](#10-testing)
+11. [Credit Budget and Run Ledger](#11-credit-budget-and-run-ledger)
+12. [Repository Structure](#12-repository-structure)
+13. [Disclaimer](#13-disclaimer)
+
+---
+
+## 1. Overview
+
+NewsIDX is a 90 day calendar that only shows the companies you actually hold.
+
+Where the issuer published a date, it shows that date, and nothing ahead of today is guessed.
+Where the effect is arithmetic, like an ex-dividend drop, it shows the number and the maths
+behind it.
+
+The whole thing is a server-rendered site over a SQLite file. No accounts, no login, no
+client-side framework. Your watchlist lives in the URL (`?w=BBCA,BBRI,TLKM`), so you can
+bookmark it or send it to someone.
+
+---
+
+## 2. Key Features
+
+| Feature | What it does |
+|---|---|
+| **Your 90 days** | A calendar scoped to your watchlist, with everything else on the page still market-wide |
+| **Up next** | The page opens on your book: next event, 7- and 30-day counts, ex-dividend exposure, and one date-sorted table of the 90 days ahead |
+| **Two certainty classes** | Facts and issuer-scheduled dates are drawn as two different shapes, never two colours |
+| **Ex-dividend arithmetic** | Dividend over last close, with both inputs printed beside it so you can check the sum |
+| **Tone as a percentage** | Bullish and bearish news tags counted into a share, per event and per page. Nothing tagged shows nothing, not a meaningless 50% |
+| **Cluster warning** | A heads-up when your month bunches: *"three of your eight names land in the week of 21 Sep"* |
+| **The board (sector heatmap)** | A treemap of the 200 largest IDX names, grouped into the eleven IDX sectors, sized by market cap and coloured by the last session's move. Hover a tile for what was on the record. Opens fullscreen for a second screen |
+| **Biggest movers** | Sectors' top five gainers and losers over a day, a week, a fortnight, a month or a year, each with the headlines that were on the record while it moved. All five periods arrive in one call, so switching between them never costs a credit |
+| **Topic filter** | Checkboxes in a popover, every topic by default. Topics are OR, so a second pick shows more rather than less. Counts are computed before the filter applies, so an option never vanishes the moment you use it |
+| **Google Calendar export** | Any day on the calendar exports as an all-day event carrying that day's agenda. An empty day still exports, so you can park your own reminder |
+| **Price strip picker** | Price the window against IHSG, LQ45, or one company you pick. A subject with no rows renders as a plain grid, never as a fake average |
+| **Watchlist editing in the page** | Add and remove names without touching the URL by hand |
+| **"How we worked this out"** | Every ticker page shows the inputs behind its own numbers, inline |
+| **Light and dark themes** | A toggle in the header. No third-party requests and no webfont, in either theme |
+| **Needs attention** | The month's stories threaded so one press release carried by four outlets is one row, then ranked by pickup against that name's own usual rate |
+| **Event collision** | Flags a story that lands on top of a date the issuer already published: *"3 sources in 2 days, 7 days before its general meeting"* |
+| **Per-ticker summary and FAQ** | Claude phrases rows already in the database and cites them by position, so a link can only point at a record we own |
+| **Price strip** | IHSG for the whole exchange, or LQ45 for the 45 most liquid names |
+| **Credit ceiling** | A hard cap asserted on every API call, with a per-run ledger you can query |
+
+---
+
+## 3. Architecture
+
+```
+  Sectors API v2
+        |
+        v
+  backfill.ts ................ market-wide range calls first,
+        |                      then bounded per-ticker fills
+        v
+  api.ts ..................... credit ceiling, cost assertion,
+        |                      permanent response cache
+        v
+  SQLite (data/newsidx.db) ... events, tickers, prices, board,
+        |                      api_cache, run ledger
+        v
+  dividend.ts ................ the ex-dividend arithmetic
+        v
+  calendar.ts / attention.ts . view models, computed on the way out,
+        |                      never stored
+        v
+  render.ts -> server.ts ..... server-rendered HTML, four routes
+```
+
+Two rules hold this shape together:
+
+**Derived values are never stored.** The database holds only what an API returned. Every
+percentage and ranking is computed on the way out, so a bad calculation can never poison a row.
+
+**No model decides anything.** Claude
+appears in exactly one place, section 9's summary and FAQ, where it phrases rows we already
+hold. It never browses, never recalls, and is never the source of a number.
+
+---
+
+## 4. Quick Setup (< 5 Minutes)
+
+### Prerequisites
+
+* Node 20 or newer. That is the whole list.
+* No bundler, no frontend framework, no webfont to download, no Docker.
+* Three runtime dependencies: `fastify`, `better-sqlite3`, `@anthropic-ai/sdk`.
+* A Sectors API key only if you want live data. The demo needs nothing.
+
+### Installation
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/nanto88/NewsIDX.git
+cd NewsIDX
+
+# 2. Install dependencies
+npm install
+
+# 3. Run the demo. Builds the whole database from fixtures.
+#    No key, no network, no sign-up.
+npm run demo
+
+# 4. Serve it
+npm run demo:serve
+# open http://localhost:3000
+```
+
+`npm run demo` runs fixtures through the same pipeline, the same SQL and the same page
+renderers a live run uses, so what you see is the real product. The numbers in it are made up,
+and every page says so in a banner.
+
+To go live instead, copy `.env.example` to `.env`, put a Sectors key in it, then run
+`npm run backfill` followed by `npm run serve`.
+
+---
+
+## 5. CLI Usage
+
+| Command | What it does |
+|---|---|
+| `npm run build` | `tsc -p .` |
+| `npm test` | Builds, then runs 150 tests through `node --test` |
+| `npm run demo` | Builds the fixture database into `./demo`. No key, no network |
+| `npm run demo:serve` | Serves that database in mock mode |
+| `npm run probes` | Measures the API behaviours the design depends on. About 12 credits |
+| `npm run backfill` | 90 days of market-wide facts, plus the watchlist's per-ticker fill |
+| `npm run backfill -- --reports` | Adds the market-wide report feed. About 32 credits |
+| `npm run backfill -- --poll` | The cheap daily shape, one incremental page |
+| `npm run serve` | Serves the live database on `PORT`, default 3000 |
+
+A typical first live run:
+
+```bash
+npm run probes
+npm run backfill
+npm run serve
+```
+
+---
+
+## 6. Configuration
+
+Everything is optional except `SECTORS_API_KEY` for live runs. `.env.example` carries the
+longer commentary on each one.
+
+| Variable | Effect |
+|---|---|
+| `SECTORS_API_KEY` | Sectors API v2 key. Needed for `backfill`, `probes` and a live `serve` |
+| `ANTHROPIC_API_KEY` | Turns on the ticker summary, FAQ and ask box. Unset leaves the button disabled |
+| `FAQ_MODEL` | Which model writes them. Defaults to `claude-sonnet-5` |
+| `WATCHLIST` | The default watchlist when the URL carries no `?w=` |
+| `INDEX_SYMBOL` | Overrides the price strip's default subject |
+| `SHARED_CACHE_DIR` | Read-through to a sibling project's cache. Anything it already bought costs 0 here |
+| `MOCK_MODE=1` | Fixtures. No key, no network |
+| `PORT` | Defaults to 3000 |
+| `NEWSIDX_HOME` | Where the database lives. Defaults to `./data` |
+| `NEWSIDX_DB` | Overrides the database path outright |
+| `NEWSIDX_TODAY` | Pins what "today" means, for reproducible demos |
+
+### What the watchlist actually scopes
+
+Only the per-ticker calls, which means corporate actions and quarterly dates, which in turn
+produce the scheduled chips. Filings, suspensions and news are
+market-wide range calls with no symbol filter, so the database ends up holding facts for every
+listed company. The watchlist filters your *agenda*. `/month` and `/day` still show the whole
+market.
+
+That asymmetry is the whole credit strategy. One page of filings covers about 950 companies.
+One corporate-actions call covers one.
+
+---
+
+## 7. Sectors API Integration
+
+Every response is cached in the database itself, in `api_cache`, keyed by URL and never
+expiring. So "what have we actually spent credits on" is just a query:
+
+```bash
+sqlite3 data/newsidx.db "SELECT fetched_at, url FROM api_cache ORDER BY fetched_at DESC LIMIT 10;"
+```
+
+### Why a URL cache is not enough on its own
+
+`api_cache` keys on the exact URL, which covers the per-ticker calls completely: a corporate
+action does not change retroactively, so the second run reads them for free forever.
+
+It does nothing for the market-wide range calls, because those carry their dates in the URL.
+Yesterday bought `start=D-90&end=D`. Today asks for `start=D-89&end=D+1`, which is a URL
+nothing has ever seen, so all 91 days get bought again at full price. A dense window costs up
+to `PAGE_CAP` (12) credits per feed, three feeds per run, against a lifetime ceiling of 275.
+Roughly eight daily runs would have spent the entire project allowance on days already sitting
+in the database.
+
+So a `coverage` table records the date span each feed has actually been fetched for, and a run
+asks only for what is missing:
+
+```bash
+sqlite3 data/newsidx.db "SELECT feed, covered_from, covered_to FROM coverage;"
+```
+
+Two deliberate choices in that logic, both in `missingSpans()` and both tested:
+
+* **The last covered day is always re-fetched, never skipped.** A feed is still filling on its
+  own final day, so treating it as finished would leave a permanent hole in whatever got
+  published after the run. One extra day per run is the price of not having one.
+* **A requested window disjoint from what is covered is fetched whole.** Fetching just the two
+  ends and recording the union would claim the middle without ever having asked for it.
+
+The same applies to `--reports`, which is the expensive feed at roughly 32 pages for the full
+universe. It resumes from the last covered date rather than from a `since` that moves with the
+clock, so only the first sweep pays for the sweep.
+
+### The finding that changed the design
+
+We started out intending to predict earnings dates. Then we read the endpoint properly.
+
+`/v2/company/get_quarterly_financial_dates/` is documented as supplying `report_date` values to
+feed the quarterly-financials endpoint, and its own example is `2026: [["2026-03-31","q1"]]`.
+That is a quarter *end*, not the day anybody filed anything. The market-wide feed has the same
+shape.
+
+So there is no filing rhythm in that data to fit, and the earnings prediction we had planned
+had no source underneath it. **Every report chip says so, on the chip:** "The feed carries the
+period (quarter end), not the date this was filed", along with the date we first saw the row,
+which is the only timing fact we genuinely hold.
+
+A later annual-rhythm fit for ex-dividend dates and general meetings was also removed: on real
+data it drew 2 windows across 332 companies. See METHODOLOGY.md §4.
+
+### The unverified index ticker
+
+Which ticker Sectors' `/v2/daily/` actually answers for IHSG or LQ45 is unverified.
+`npm run probes` (Q16) measures it, and `INDEX_SYMBOL` overrides the default. A subject that
+returns no rows renders as a plain grid, never as an average of your watchlist wearing the
+index's name.
+
+---
+
+## 8. Certainty Rules
+
+The Sectors API has exactly one field that natively points forward: `upcoming_dividend`. The
+past is dense, the future is thin. We show only what was published, and draw the two kinds
+differently.
+
+| Class | How sure we are | How it looks |
+|---|---|---|
+| **Fact** | It happened, and the official record is attached | Solid fill |
+| **Scheduled** | The issuer published this date | Solid fill with a cyan rule down the left |
+
+Shapes rather than colours, because colour on its own fails colour-blind readers, and it also
+fails on a compressed video.
+
+### Rules the code keeps
+
+1. Every date ahead of today is one the issuer published. Nothing is fitted or guessed.
+2. Every fact chip links its official record. A fact without a source is just an assertion.
+3. News is context, never cause. Chips say what was published that day, and nothing more.
+4. No model decides anything. See [Architecture](#3-architecture).
+
+### How the Topic filter selects
+
+Nothing picked means every topic. That is the default, and a filter nobody has touched must
+not hide anything, so the button says **All N topics** rather than looking switched off.
+
+Topics are checkboxes in a popover on the filter bar, each with its count, taken before the
+filter applies so an option never vanishes the moment you use it. Ticked, the button turns the
+primary wash and names what is on (**Dividend**, or **2 topics**), and a **Clear topics** link
+appears. Checked boxes submit as repeated `tag` params, which the server joins into one
+comma-separated `?tag=`, capped at 12 topics.
+
+Picking several is OR, not AND. Ticking a second topic widens the page, which is what a reader
+means by ticking a second box, and it stops the filter emptying itself on the many pairs that
+never co-occur: one story is rarely both a dividend and a suspension. Each topic is matched
+case-insensitively as a substring of the row's own tags.
+
+`METHODOLOGY.md` is a single page on how each number is made, and what none of them claim.
+
+---
+
+## 9. Web Dashboard
+
+```bash
+npm run demo:serve
+# open http://localhost:3000
+```
+
+| Page | URL | What it answers |
+|---|---|---|
+| **Agenda** | `/` (also `/month`) | What is coming for *my* names, and what is being said about them |
+| **Market** | `/market` | What the whole exchange just did: indices, the board, the movers |
+| **Company** | `/ticker?symbol=BBCA` | One company: its events, its history, a briefing |
+| **Day** | `/day?date=2026-09-21` | Everything on the record for one date |
+
+**The board** opens the Market view: the 200 biggest IDX companies as one treemap, grouped by
+sector, sized by market cap, coloured by the last session's move. Hover any tile and you get
+what was on the record for that company over the past three days, filings and suspensions
+first, then headlines, each with a date and a source. Most tiles say "nothing on the record",
+because most days most companies do nothing, and we would rather say that than leave a blank.
+There is a fullscreen button if you want it on a second screen.
+
+**Biggest movers** sits under the board. Five gainers and five losers, ranked by Sectors' own
+list rather than by anything computed here, over any of five periods — a day, a week, a
+fortnight, a month, a year. Under each name are up to three things that were on the record
+while it moved, newest first, with the exchange's own filings and suspensions ahead of press
+coverage.
+
+Two honest notes on that block. The period switcher is free — every period came back in the
+same call, so changing it is a database read. And **the headlines under a gainer are not the
+reason it gained.** The block says so in its own summary line, not only behind its ⓘ, because a
+headline printed under the word "gainer" gets read as the cause unless the page refuses the
+implication out loud.
+
+**Needs attention** sits on the agenda. Stories get threaded, so one press release carried by
+four outlets is one row and not four. Then ranked by how hard it was picked up compared to that
+company's own usual rate, and whether it lands on top of a date the issuer already published.
+Each row's **Why** opens the parts its score is made of. We never call anything viral: there are
+no share counts in this data, and counting distinct sources is a floor on attention, never reach.
+
+**The company page** carries every event we hold with its official record linked, split into
+filings and corporate actions (never filtered by topic) and news (which the topic narrows).
+Each list folds, and a **List / Calendar / Chart** switch redraws the record as that company's month, or as its 90-day price line with the news and filings hung on it as hoverable markers (each kind can be switched off).
+Beside them is a generated summary, FAQ and ask box. The summary needs
+`ANTHROPIC_API_KEY`; without one the button is simply disabled, and the demo serves a fixture so
+it works with no key.
+
+**Up next** opens the agenda. It shows four counts: the next event, the next 7 days, the next 30
+days, and ex-dividend dates with the largest expected drop. Under the counts is one table of
+the selected names' next 90 days, sorted by date, giving days to go and the expected drop. A holding with nothing ahead is
+named rather than left out. With no companies picked it lists the market's dated events only. **Download CSV** exports the same rows, one per event, for a spreadsheet. The route
+is read-only and cannot spend a credit. A text cell that starts with `=`, `+`, `-` or `@` is
+prefixed with an apostrophe, so a headline cannot run as a formula.
+
+**Colour has one role per hue.** Green and red are a price move and nothing else. Sectors'
+Bullish / Bearish tag is a ▲ or ▼ in its own pair of colours (`--bull`, `--bear`) beside a
+headline that stays body text: a tag on coverage is not a price move and must not look like one.
+Amber (`--alert`) means soon: under a week to go, or the top-ranked story. An active filter wears
+the primary wash. The glyphs carry "Bullish" / "Bearish" for a screen reader, so tone never
+depends on colour alone. In the light theme, text clears WCAG AA's 4.5:1.
+
+**Type.** Sans for words, mono only where digits must line up: dates, tickers, prices,
+percentages. Section headings are 16px sans in body colour; nothing on the page is under 11px.
+
+**The layout.** Three views in a segmented control in the header, beside **About** and the
+theme toggle. Under the header, one **filter bar**: the same GET form on every page that has
+anything to filter — companies (pills plus an add box), topics (a popover of checkboxes),
+**Apply**, and a **Clear filters** that exists only while something is narrowed. The company
+page swaps the companies field for a one-company picker. Market has no bar at all: the board and
+the movers are the whole exchange and take no filter, and each carries its own control (a
+sector select, a period switch) on the block itself.
+
+Above 1200px the agenda is two tracks with one job each: **what is coming** on the left (Up
+next, then the month), **what is being said** on the right. The right track is one panel with
+an arrow slider: **Needs attention** and **Headlines this month** share it, `‹ 1 / 2 ›` slides
+between them, and a link into the headlines (their pager, or `#headlines`) opens on that slide.
+With scripts off both slides simply stack. Each track is its own column, so a long list on one
+side never opens a gap on the other, and DOM order — left track, then right — is the reading
+order at every width. Below 1200px it is one column in that order. The company page is the same
+two tracks: the record on the left, the generated briefing beside it.
+
+**Explanations are one click away, not in front.** Every block's method lives behind an **i**
+beside its heading, and the key to Fact / Scheduled lives in the **About** drawer.
+Both are the native `popover`: no script, Escape and click-outside close them, and a browser
+without popover support renders the text inline. The short shape key stays visible under every
+list, because provenance is the product.
+
+**A date in the calendar takes over the right panel.** Clicking a day swaps the Needs
+attention / Headlines slider for that day's scheduled events and facts, with **Open full day** and
+**Close · back**. Clicking the same date again puts the slider back, on the slide it was on;
+clicking a different date switches to that day. The cell is still a real link, so ⌘/Ctrl-click,
+middle-click and a browser with scripts off all open `/day` as before. The panel is lifted from
+the day page itself, so a day has one renderer. On a priced grid the date number takes the
+close's direction, green up and red down, like the close under it.
+**Up next follows the date.** The same click re-anchors Up next to the picked day: the next
+event, the 7- and 30-day counts, ex-dividend exposure and the table all count forward from that
+date, and **Download CSV** exports that same list (`/upnext.csv?date=…`). **Back to today**, a
+second click on the date, or closing the panel restores it. It is its own read-only fragment
+(`/upnext?date=…`), so clicking through the calendar can never spend a credit.
+
+**The board filters by sector.** A sector select on the board's heading, each option carrying
+that sector's cap-weighted move. Picking one redraws the treemap with only that sector, boxed
+by industry (sub-sector), so its names get room to read. It is a GET form
+(`/market?sector=Financials#board`) that keeps the rest of the page, and with scripts on it
+submits on change. A `?sector=` naming no sector on the board is ignored.
+
+**Index strip.** Over the board, IHSG and LQ45 each show their last close and the move over
+**1D / 1W / 1M / 1Y**: against the previous session, a week, a calendar month and a calendar
+year back. It is a database read. The backfill buys the closes from `/v2/index-daily/{code}/`,
+Sectors' index endpoint (`/v2/daily/` answers nothing for an index). A year of history is
+bought **once**, as four 90-day calls per index (4 credits each). After that, the daily
+90-day fill that the calendar already needs keeps it current, so the strip costs nothing extra
+per day. A period with no close within a week of its date prints a dash rather than borrowing
+a nearer day.
+
+**Paging a day in place.** In the day panel beside the calendar, the facts' Newer / Older
+buttons page inside the panel too. They are still real links to `/day`, so a modified click
+opens the full page.
+
+**Mover notes are one line each.** The headline links to its source (only when the source is
+an http(s) page), followed by the date and the outlet's domain. "News" is not repeated on every
+row, but a filing or a suspension is named, because that is the one worth flagging. A day page
+stays a 780px reading column, because a single list set 1300px wide is harder to read.
+
+**On every page**: a light and dark theme toggle, and the About drawer. On the agenda: the
+filter bar, a price strip you can point at IHSG, LQ45 or one selected company, and a Google
+Calendar export on each day cell that carries that day's agenda as an all-day event.
+
+Nothing in the served UI can spend a credit, except the bounded on-demand fill for a symbol
+nobody has fetched before (`FILL_ON_DEMAND`, always on in mock mode).
+
+---
+
+## 10. Testing
+
+```bash
+npm test
+```
+
+147 tests through `node --test`, covering the ex-dividend arithmetic, the bucketing, the idempotent upsert, HTML escaping, the treemap geometry, and one assertion that
+fails if a single design-system hex value drifts.
+
+No key and no network needed. The suite builds first, so it also serves as the typecheck.
+
+---
+
+## 11. Credit Budget and Run Ledger
+
+The hackathon allowance is 1,000 per team, shared with a sibling project, so this one holds
+itself to 275 across all runs. The ceiling lives in `config.ts` and is asserted on every call in
+`api.ts`. The fixture demo spends 22 imaginary credits and builds a complete database.
+
+| What we do | Why it is cheap |
+|---|---|
+| Market-wide range calls instead of per-ticker loops | one `/v2/filings/` page covers every listed company |
+| Per-ticker calls cached forever | corporate actions do not change retroactively, so the second run is free |
+| Range calls buy only the days not already covered | the dates live in the URL, so a rolling window would otherwise re-buy all 90 days daily. A repeat run asks for the tail day and stops |
+| `SHARED_CACHE_DIR` reads a sibling project's cache | anything it already bought costs nothing here |
+| The expected-drop number reuses closes the backfill already bought | the arithmetic is free on top of the price strip |
+| `?since=` polling on the report feed | a full sweep is about 32 pages, an incremental poll is one |
+| Closes fetched during backfill, never on a page view | 1 credit per name buys 90 days, and browsing can never spend |
+| One index series for the price strip, not 950 tickers | 1 credit colours the default calendar for everyone |
+| The board is a single `/v2/companies/` call | sector, market cap and daily change for 200 companies at once. Per-ticker it would be 200 credits against a 275 ceiling, which is to say it would not exist |
+| The movers are a single `/v2/companies/top-changes/` call | `periods` is a comma-separated list, so five periods cost what one does. That is the only reason the switcher offers five — under a per-period price it would have offered one |
+
+Every run writes what it spent to the `run` table, and that is where the ceiling reads its
+lifetime total from:
+
+```bash
+sqlite3 data/newsidx.db "SELECT started_at, kind, credits FROM run ORDER BY started_at DESC;"
+```
+
+---
+
+## 12. Repository Structure
+
+```
+NewsIDX/
+├── src/
+│   ├── api.ts .............. credit ceiling, cost assertion, permanent cache, mock mode
+│   ├── backfill.ts ......... API responses into rows. Ranges first, then bounded fills
+│   ├── db.ts ............... every table, one write path, idempotent upserts
+│   ├── dividend.ts ......... the ex-dividend arithmetic
+│   ├── attention.ts ........ threading headlines, nearest dated event, the ranked list
+│   ├── calendar.ts ......... view models, computed on read, never stored
+│   ├── heatmap.ts .......... the board (a squarified treemap) and the ranked movers
+│   ├── faq.ts .............. the one place a model is involved
+│   ├── render.ts ........... server-rendered HTML
+│   ├── server.ts ........... the routes: agenda, month, day, ticker, two FAQ endpoints
+│   ├── config.ts ........... env, paths, the credit ceiling, the design tokens
+│   ├── cache.ts, dates.ts
+│   ├── *.test.ts ........... 147 tests
+│   └── mock/fixtures.ts .... made-up data in the API's own response shapes
+├── scripts/
+│   ├── backfill-run.ts ..... the backfill entry point
+│   ├── demo.ts ............. builds the fixture database
+│   └── probes.ts ........... measures the API behaviours the design assumes
+├── demo.html ............... the static mockup the UI was built from
+├── METHODOLOGY.md .......... how every number is made, and what none of them claim
+├── plan.md ................. the build plan, including what got deliberately cut
+└── .env.example
+```
+
+---
+
+## 13. Disclaimer
+
+**NewsIDX is research tooling. It is not investment advice.**
+
+* Nothing here is a recommendation to buy, sell or hold any security.
+* News is context, never cause. A chip tells you what was published on a date and stops there.
+* No macro coverage. Sectors holds no rate, CPI or GDP data, and the UI never implies otherwise.
+* Run in demo mode, every number on every page is fabricated, and each page says so in a banner.
+* Verify anything that matters against the issuer's own filing before you act on it.
