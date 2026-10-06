@@ -9,7 +9,7 @@ Most of us find out our stock had an event when we open the app and see a gap. T
 went ex yesterday. The general meeting was last week. Three of your names reported in the same
 five days and you only noticed the one that moved.
 
-**Track 03, Market Intelligence.** Built on the Sectors API v2.
+A personal project: a news-based view of the IDX market, powered by the Sectors API v2 and Claude.
 
 ```bash
 npm install && npm run demo && npm run demo:serve

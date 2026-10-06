@@ -1,42 +1,51 @@
 <!-- Classification: PUBLIC -->
 # NewsIDX
 
-### Know which of your IDX holdings has an event coming, before the price tells you
+### See what is coming for your IDX stocks before the price moves
 
-Most of us find out our stock had an event when we open the app and see a gap. The dividend
-went ex yesterday. The general meeting was last week. Three of your names reported in the same
-five days and you only noticed the one that moved.
+Most people find out about a stock event too late. You open your app and the price has already
+jumped or dropped. The dividend went ex yesterday. The shareholder meeting was last week. Three
+of your companies reported in the same week, and you only noticed the one that moved.
 
-NewsIDX is a **90 day calendar of the Indonesian stock exchange (IDX) that only shows the companies
-you hold.** Built on the Sectors API v2 for Track 03, Market Intelligence.
+NewsIDX is a personal project that fixes this. It is a **news-based market view for the
+Indonesian stock exchange (IDX)**. It shows a 90 day calendar of events, but only for the
+companies you own, together with the news about them.
+
+It is powered by two things:
+
+* **Sectors API** for the market data: prices, dividends, meetings, earnings and news.
+* **Claude** for the writing: a short summary of each company's news, a list of common
+  questions and answers, a box where you can ask your own question, and a briefing.
 
 <p align="center">
   <img src="showcase/images/01-agenda-overview.png" alt="NewsIDX agenda: Up next, Needs attention and the month calendar" width="100%">
 </p>
 
-> Every screenshot here comes from the demo build, which runs on **fixture data**. The numbers are
-> made up, and each page says so in a banner.
+> All screenshots come from the demo version, which uses **sample data**. The numbers are not
+> real, and every page shows a banner to remind you.
 
 ---
 
-## For analysts: what it does
+## What you can do with it
 
-| You want to know | NewsIDX shows |
+| Your question | Where NewsIDX answers it |
 |---|---|
-| What is coming for my holdings? | **Up next**: the next event, 7 and 30 day counts, and one date-sorted table of the 90 days ahead |
-| What will a dividend do to the price? | **Ex-dividend drop**: dividend over last close, with both inputs printed so you can check the sum |
-| Is my month bunching up? | **Cluster warning**: *"three of your eight names land in the week of 21 Sep"* |
-| What is the market saying about my names? | **Needs attention**: one press release carried by four outlets is one row, ranked by pickup against that name's usual rate |
-| Does news land on a known date? | **Event collision**: *"3 sources in 2 days, 7 days before its general meeting"* |
-| What did the whole exchange do? | **The board**: a heatmap of the 200 largest names by sector, plus the biggest movers over a day to a year |
-| What is the story on one company? | **Company page**: its events, a price line with news and filings marked on it, and a briefing that cites its sources |
+| What is coming up for my stocks? | **Up next**: the next event, how many events are in the next 7 and 30 days, and one table of everything in the next 90 days |
+| How much will a dividend pull the price down? | **Ex-dividend drop**: the dividend divided by the last price. Both numbers are shown, so you can check it yourself |
+| Are too many events in the same week? | **Cluster warning**: for example, *"three of your eight stocks have events in the week of 21 Sep"* |
+| What is the news saying about my stocks? | **Needs attention**: if four news sites carry the same press release, you see it once. Stories are ranked by how much more coverage a company gets than usual |
+| Is there news just before a known event? | **Event collision**: for example, *"3 sources in 2 days, 7 days before its general meeting"* |
+| How did the whole market do? | **The board**: a heatmap of the 200 biggest companies by sector, plus the biggest winners and losers from one day up to one year |
+| What is the full story on one company? | **Company page**: its events, a price chart with news and filings marked on it, and a Claude-written summary, Q&A and briefing |
 
-**How much to trust a date.** Every date ahead of today is one the issuer published. Nothing is
-predicted. Facts and issuer-scheduled dates are drawn as two different shapes, never two colours,
-and every fact links its official record. News is context, never cause.
+**Can I trust the dates?** Yes. Every future date comes from the company itself. NewsIDX does not
+guess or predict anything. Confirmed facts and planned dates look different on the page (different
+shapes, not just different colours), and every fact links to its official source. News is shown
+as background, never as the reason a price moved.
 
-**Your watchlist lives in the URL** (`?w=BBCA,BBRI,TLKM`). No account, no login: bookmark it or
-send it to a colleague. Any day exports to Google Calendar, and **Up next** exports to CSV.
+**Your watchlist is saved in the link** (`?w=BBCA,BBRI,TLKM`). There is no account and no login.
+Just bookmark the page or share the link with a friend. You can add any day to Google Calendar,
+and you can download **Up next** as a CSV file.
 
 ---
 
@@ -44,79 +53,81 @@ send it to a colleague. Any day exports to Google Calendar, and **Up next** expo
 
 <table>
   <tr>
-    <td width="50%"><img src="showcase/images/11-market-board.png" alt="Market board: sector heatmap and movers"><br><b>The board.</b> The 200 largest IDX names by sector, sized by market cap, coloured by the last session's move.</td>
-    <td width="50%"><img src="showcase/images/03-agenda-needs-attention-why.png" alt="A ranked story with its score broken into parts"><br><b>Every ranking shows its working.</b> Open <i>Why</i> to see the parts a story's score is made of.</td>
+    <td width="50%"><img src="showcase/images/11-market-board.png" alt="Market board: sector heatmap and movers"><br><b>The board.</b> The 200 biggest IDX companies by sector. Box size is company value, colour is the last day's move.</td>
+    <td width="50%"><img src="showcase/images/03-agenda-needs-attention-why.png" alt="A ranked story with its score broken into parts"><br><b>Every ranking explains itself.</b> Click <i>Why</i> to see how a story got its score.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="showcase/images/16-company-price-chart.png" alt="Company price line with news and filing markers"><br><b>News and filings on the price line.</b> Hover a marker for the source.</td>
-    <td width="50%"><img src="showcase/images/19b-company-briefing-generated.png" alt="Generated company briefing with cited sources"><br><b>Briefing on demand.</b> Nothing is generated until you ask, and every claim links to a record we hold.</td>
+    <td width="50%"><img src="showcase/images/16-company-price-chart.png" alt="Company price line with news and filing markers"><br><b>News and filings on the price chart.</b> Hover over a marker to see the source.</td>
+    <td width="50%"><img src="showcase/images/19b-company-briefing-generated.png" alt="Generated company briefing with cited sources"><br><b>Briefing when you ask for it.</b> Claude only writes when you click, and every sentence links to a source we have saved.</td>
   </tr>
   <tr>
-    <td width="50%"><img src="showcase/images/02-agenda-up-next-follows-date.png" alt="Up next recounted from a clicked date"><br><b>Click any date</b> and the whole outlook counts forward from it.</td>
-    <td width="50%"><img src="showcase/images/21-agenda-light-theme.png" alt="Agenda in the light theme"><br><b>Dark and light themes.</b> No third-party requests, no webfont.</td>
+    <td width="50%"><img src="showcase/images/02-agenda-up-next-follows-date.png" alt="Up next recounted from a clicked date"><br><b>Click any date</b> and Up next counts forward from that day.</td>
+    <td width="50%"><img src="showcase/images/21-agenda-light-theme.png" alt="Agenda in the light theme"><br><b>Dark and light themes.</b> No outside trackers and no web fonts.</td>
   </tr>
 </table>
 
-Works on a phone too: see [agenda](showcase/images/23-mobile-agenda.png),
-[market](showcase/images/24-mobile-market.png) and [company](showcase/images/25-mobile-company.png).
-All 30 images are in [`showcase/images`](showcase/images).
+It works on a phone too: see the [agenda](showcase/images/23-mobile-agenda.png),
+[market](showcase/images/24-mobile-market.png) and [company](showcase/images/25-mobile-company.png)
+pages. All 30 screenshots are in [`showcase/images`](showcase/images).
 
 ---
 
-## For developers: run it
+## Run it yourself
 
 ```bash
 git clone https://github.com/nanto88/NewsIDX.git
 cd NewsIDX
 npm install
-npm run demo          # builds the whole database from fixtures
-npm run demo:serve    # open http://localhost:3000
+npm run demo          # builds the database from sample data
+npm run demo:serve    # then open http://localhost:3000
 ```
 
-No API key, no network, no sign-up. The demo runs fixtures through the same pipeline, SQL and
-page renderers a live run uses.
+The demo needs no API key, no internet and no sign-up. It sends the sample data through the same
+code that the live version uses.
 
-**Go live:** copy `.env.example` to `.env`, add `SECTORS_API_KEY`, then `npm run backfill` and
-`npm run serve`.
+**To use real data:** copy `.env.example` to `.env` and add your `SECTORS_API_KEY`. Add
+`ANTHROPIC_API_KEY` too if you want the Claude summary, Q&A and briefing. Then run
+`npm run backfill` and `npm run serve`.
 
 | Command | What it does |
 |---|---|
-| `npm test` | Builds, then runs the suite with `node --test`. No key or network needed |
-| `npm run demo` / `demo:serve` | Build and serve the fixture database |
-| `npm run probes` | Measures the API behaviours the design depends on (about 12 credits) |
-| `npm run backfill` | 90 days of market-wide facts plus the watchlist's per-ticker fill |
+| `npm test` | Builds the project and runs all tests. No key or internet needed |
+| `npm run demo` / `demo:serve` | Builds and serves the sample database |
+| `npm run probes` | Checks how the Sectors API behaves (uses about 12 credits) |
+| `npm run backfill` | Loads 90 days of market data, plus extra data for your watchlist |
 | `npm run serve` | Serves the live database on `PORT` (default 3000) |
 
-### How it is built
+### How it works
 
-Node 20+, TypeScript, Fastify, SQLite (`better-sqlite3`). Server-rendered HTML, no bundler, no
-frontend framework.
+Node 20+, TypeScript, Fastify and SQLite (`better-sqlite3`). The server builds plain HTML pages.
+There is no bundler and no frontend framework.
 
 ```
-Sectors API v2 -> api.ts (credit ceiling, permanent cache) -> backfill.ts
-  -> SQLite -> calendar.ts / attention.ts (view models) -> render.ts / server.ts
+Sectors API -> api.ts (credit limit, saved cache) -> backfill.ts
+  -> SQLite -> calendar.ts / attention.ts (page data) -> render.ts / server.ts
+                                Claude -> faq.ts (summary, Q&A, briefing)
 ```
 
-Three rules hold the design together:
+Three simple rules keep it honest:
 
-* **Derived values are never stored.** The database holds only what the API returned. Every
-  percentage and ranking is computed on the way out.
-* **No model decides anything.** Claude appears in one place, the per-company summary and FAQ,
-  where it phrases rows we already hold. It is never the source of a number.
-* **Credits are capped.** A hard ceiling is asserted on every API call, and each run writes what
-  it spent to a ledger you can query.
+* **Only raw data is saved.** The database keeps exactly what the API sent back. Every percentage
+  and ranking is worked out fresh when a page loads.
+* **Claude writes, but never decides.** Claude only puts our saved news and facts into plain
+  words. It never makes up a number, and it can only link to sources we already have.
+* **API credits have a limit.** Every call is checked against a hard limit, and each run records
+  how many credits it used.
 
-### More
+### Learn more
 
-* [`docs/DETAILS.md`](docs/DETAILS.md): the full reference, covering configuration, the credit
-  strategy, the certainty rules and every UI detail.
-* [`METHODOLOGY.md`](METHODOLOGY.md): how each number is made, and what none of them claim.
-* [`plan.md`](plan.md): the build plan, including what was deliberately cut.
+* [`docs/DETAILS.md`](docs/DETAILS.md): the full guide to settings, credits, how dates are
+  trusted, and every part of the UI.
+* [`METHODOLOGY.md`](METHODOLOGY.md): how each number is calculated, and what it does not mean.
+* [`plan.md`](plan.md): the original build plan, including the ideas we dropped.
 
 ---
 
 ## Disclaimer
 
-**NewsIDX is research tooling. It is not investment advice.** Nothing here is a recommendation to
-buy, sell or hold any security. In demo mode every number is fabricated. Verify anything that
-matters against the issuer's own filing before you act on it.
+**NewsIDX is a personal research tool. It is not investment advice.** Nothing here tells you to
+buy, sell or hold any stock. In demo mode every number is made up. Always check anything important
+against the company's own filing before you act.
