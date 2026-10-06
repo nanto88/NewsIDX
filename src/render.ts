@@ -802,7 +802,8 @@ export const STYLE = `
   .tip li{font-size:11.5px;line-height:1.35}
   .tip li .k{font-family:var(--font-mono);font-size:9.5px;color:var(--text-faint);
              display:block;margin-bottom:1px;letter-spacing:.05em;text-transform:uppercase}
-  .tip li .t.pos{color:var(--up)} .tip li .t.neg{color:var(--down)}
+  /* A tagged headline here keeps the body colour: its ▲/▼ glyph carries the
+     sentiment role, and green/red are a price move and nothing else. */
   .tip .none{font-size:11.5px;color:var(--text-faint);margin:8px 0 0;padding-top:8px;
              border-top:1px solid var(--border);line-height:1.35}
 
@@ -877,7 +878,6 @@ export const STYLE = `
   .mv-notes a.t:hover{text-decoration:underline}
   .mv-notes .k{flex:none;font-family:var(--font-mono);font-size:11px;color:var(--text-muted);
                letter-spacing:.05em;text-transform:uppercase}
-  .mv-notes .t.pos{color:var(--up)} .mv-notes .t.neg{color:var(--down)}
   .mv-none{margin:7px 0 0 19px;padding-top:7px;border-top:1px solid var(--border);
            font-size:11.5px;color:var(--text-muted);line-height:1.35}
 
@@ -2040,7 +2040,7 @@ function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; pric
                   // the tooltip rather than the line. Still guarded: no host,
                   // no href.
                   domainOf(h.sourceUrl)
-                    ? `<a class="src ${sentClass(h)}" href="${esc(h.sourceUrl)}" rel="noreferrer noopener" target="_blank"
+                    ? `<a class="src" href="${esc(h.sourceUrl)}" rel="noreferrer noopener" target="_blank"
                          title="Open the source at ${esc(domainOf(h.sourceUrl))}">${esc(h.title)} ↗</a>`
                     : esc(h.title)
                 }</span></li>`

@@ -434,6 +434,9 @@ test("each colour has one role: price, sentiment, alert", () => {
   // An active filter is the primary, filled -- the bar is the one place it lives.
   assert.match(STYLE, /\.f-drop\.on\{background:var\(--primary-wash\)/);
   assert.ok(!STYLE.includes("var(--on)"), "the old orange on-colour is gone");
+  // The same holds in the board's hover panel and the movers' notes: a tagged
+  // headline is body text there too, never painted as a price move.
+  assert.ok(!/\.tip li \.t\.(pos|neg)\{/.test(STYLE) && !/\.mv-notes \.t\.(pos|neg)\{/.test(STYLE), "no sentiment headline is green or red");
 });
 
 test("the price strip filter offers the selection, and lands you back on itself", () => {
@@ -1087,4 +1090,20 @@ test("an anchored up next on a past date says what it is counting, and marks wha
   // A date with nothing says why, in terms of the date and not of today.
   assert.match(upNext([], [], "2026-09-01"), /in the 90 days from 1 Sep\. Dates are only on record once an issuer publishes them/);
   assert.match(upNext([], [], todayIso()), /in the next 90 days\./);
+});
+
+test("a tagged headline in the month list carries its sentiment glyph once, not twice", () => {
+  const opts = { mock: false, asOf: null, credits: null, indices: INDICES, priceSymbol: null, attention: NO_ATTENTION };
+  const html = renderMonth([], "2026-09", [], {
+    ...opts,
+    pulse: {
+      from: "2026-09-01", to: "2026-09-30", tag: "", who: "", total: 1, page: 1, pages: 1, offset: 0, topics: [], tickers: [],
+      headlines: [{ cls: "fact", kind: "news", symbol: "ICBP", date: "2026-09-11", title: "ICBP flags higher wheat costs",
+                    sourceUrl: "https://x.invalid/a", tags: ["Bearish"] } as Item],
+    },
+  });
+  const li = html.match(/<li><span class="d">11 Sep<\/span>[\s\S]*?<\/li>/)![0];
+  // The glyph is a ::before on every .tone element, so two nested ones draw two.
+  assert.equal((li.match(/\btone\b/g) ?? []).length, 1, "one element carries the tone");
+  assert.match(li, /<a class="src" href="https:\/\/x\.invalid\/a"/);
 });
