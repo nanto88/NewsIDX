@@ -9,7 +9,7 @@ INTERNAL
 > 90 days, dated when the issuer dated it, predicted with a confidence window when nobody
 > dated it, and priced when the effect is mechanical.
 
-Track 03 — Market Intelligence. Stack: TypeScript on Node 20+, Fastify, better-sqlite3,
+Personal project. Stack: TypeScript on Node 20+, Fastify, better-sqlite3,
 disk+Redis cache, server-rendered HTML — ported from `../sentry_fin/server`.
 
 Build closes **30 Sep 2026 23:59 WIB** (19 days). Registration closes **22 Sep** —
@@ -25,7 +25,7 @@ asks. Six changes, each tied to the rubric.
 | # | Change | Why |
 |---|---|---|
 | 1 | **Watchlist is the entry point, not the month grid.** Landing view is a 90-day agenda for *your* tickers | 40% of the score is "can someone use this today and benefit". Nobody benefits from all ~950 IDX names on a grid. The two personas in `research.md` §5 both hold 5–15 names |
-| 2 | **Four derived numbers promoted to the product surface** (§3b) | Track 03 excludes products that "only display raw Sectors data in a different visual form". A grid of facts *is* that. The prediction, the ex-div drop, the cluster count and the hit rate are what the API does not return |
+| 2 | **Four derived numbers promoted to the product surface** (§3b) | A product that only shows raw Sectors data in a new layout adds little. A grid of facts *is* that. The prediction, the ex-div drop, the cluster count and the hit rate are what the API does not return |
 | 3 | **Hit rate is backtested out-of-sample, not waited for** | Q3 reports land late Oct — **after** the deadline. v1 step 8 (fill `actual_date` as reports arrive) would produce n≈0 by 30 Sep. Predicting quarter *N* from quarters 1..*N−1* over the history we already paid for gives a real hit rate on day one, for 0 extra credits |
 | 4 | **Mobile-first agenda; month grid demoted to a density view** | Retail investors are on phones. A 7-column dark grid with 3 chips per cell is unreadable at 390px, and unreadable on a phone-shot video |
 | 5 | **Per-ticker cost cut 120 → 24 credits**, coverage widened by making fills demand-driven and sharing `../sentry_fin`'s cache (§6) | Same product, ~half the committed credits, and the 1,000 pool is shared with SentryX |
