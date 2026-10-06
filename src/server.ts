@@ -376,7 +376,7 @@ app.get("/upnext.csv", async (req, reply) => {
   reply
     .type("text/csv; charset=utf-8")
     .header("content-disposition", `attachment; filename="newsidx-upnext-${from}.csv"`);
-  return upNextCsv(upcoming(con, w, from), from);
+  return upNextCsv(upcoming(con, w, from, runToday()), from);
 });
 
 /** Up next as a fragment, counted forward from a calendar date. Read-only like
@@ -386,7 +386,7 @@ app.get("/upnext", async (req, reply) => {
   const w = watchlistFrom(q);
   const from = upNextDate(q);
   reply.type("text/html; charset=utf-8");
-  return upNext(upcoming(con, w, from), w, from);
+  return upNext(upcoming(con, w, from, runToday()), w, from);
 });
 
 

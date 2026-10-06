@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { day, matchesTag, MAX_TAGS, month, parseTags, pulseOver, sentimentOf, timeline } from "./calendar.js";
+import { day, matchesTag, MAX_TAGS, month, parseTags, pulseOver, sentimentOf, timeline, upcoming } from "./calendar.js";
 import { connect, upsertEvents, upsertPrices } from "./db.js";
 import { shift } from "./dates.js";
 const TODAY = "2026-09-11"; // a Friday
@@ -327,4 +327,27 @@ test("an item with no tags survives an empty filter and fails a real one", () =>
   const untagged = { kind: "news" } as any;
   assert.equal(matchesTag(untagged, ""), true);
   assert.equal(matchesTag(untagged, "Dividend"), false);
+});
+
+test("up next counts forward from any date, and a past date keeps what was ahead of it", () => {
+  const con = connect(path.join(mkdtempSync(path.join(tmpdir(), "fw-")), "t.db"));
+  upsertEvents(con, [
+    { date: "2026-09-10", symbol: "BBCA", kind: "agm", class: "fact", title: "General meeting" },
+    { date: "2026-09-02", symbol: "ANTM", kind: "exdiv", class: "fact", title: "Cash dividend · ex-date" },
+    { date: "2026-09-05", symbol: "ANTM", kind: "news", class: "fact", title: "a headline" },
+    { date: "2026-09-08", symbol: "BBCA", kind: "filing", class: "fact", title: "Director sells shares" },
+    { date: "2026-10-20", symbol: "TLKM", kind: "exdiv", class: "scheduled", title: "Cash dividend · ex-date" },
+  ]);
+  const NOW = "2026-10-05";
+  const titles = (from: string) => upcoming(con, [], from, NOW).map((i) => `${i.date} ${i.symbol}`);
+
+  // From today: only what an issuer has dated ahead.
+  assert.deepEqual(titles(NOW), ["2026-10-20 TLKM"]);
+  // From a day in September: the meeting and dividend that were ahead then,
+  // as they turned out -- and never a headline or a filing.
+  assert.deepEqual(titles("2026-09-01"), ["2026-09-02 ANTM", "2026-09-10 BBCA", "2026-10-20 TLKM"]);
+  // Later in the month the earlier one has dropped off the front.
+  assert.deepEqual(titles("2026-09-03"), ["2026-09-10 BBCA", "2026-10-20 TLKM"]);
+  // Without `now` it behaves exactly as before: scheduled only.
+  assert.deepEqual(upcoming(con, [], "2026-09-01").map((i) => i.symbol), ["TLKM"]);
 });

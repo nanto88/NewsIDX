@@ -1016,8 +1016,12 @@ test("needs attention and the month's headlines are one slider, not two stacked 
   // Both slides live in the one panel; the first is showing.
   assert.match(html, /<div class="slide on" data-title="Needs attention">/);
   assert.match(html, /<div class="slide" data-title="Headlines">/);
-  assert.match(html, /class="feed-arrow" data-slide="-1"/);
-  assert.match(html, /class="feed-arrow" data-slide="1"/);
+  // The arrows sit in each slide's own heading row, so they align with its
+  // title by layout and not by a hard-coded offset.
+  assert.equal((html.match(/class="feed-arrow" data-slide="-1"/g) ?? []).length, 2, "one pair per slide");
+  assert.match(html, /<div class="sh"[^>]*><h2>Needs attention<\/h2>[\s\S]*?<span class="end"><span class="feed-nav"/);
+  assert.ok(!STYLE.includes("position:absolute;top:20px;right:0"), "and no pixel-offset positioning");
+  assert.match(STYLE, /\.feed\{position:relative;overflow-x:clip\}/, "the slide-in never widens the page");
   // Script off: nothing is hidden, so both slides just stack and nothing is lost.
   assert.ok(STYLE.includes(".js .feed .slide{display:none}"), "hiding is gated on script being on");
   assert.ok(STYLE.includes(".js .feed-nav{display:flex}"), "and so are the arrows");
@@ -1073,4 +1077,14 @@ test("the briefing button carries a tooltip that says what happened, what it mak
   assert.match(renderTicker(t as any, [], { ...opts, faq: { ...base, model: "fixtures", row: null } }), /every sentence of it is fabricated/);
   // And the tooltip can be dismissed from the keyboard.
   assert.match(page({ title: "t", active: "agenda", watchlist: [], body: "", mock: false, asOf: null, credits: null }), /e\.key !== 'Escape'/);
+});
+
+test("an anchored up next on a past date says what it is counting, and marks what has happened", () => {
+  const past = { cls: "fact", kind: "agm", symbol: "BBCA", date: "2026-09-10", title: "General meeting" } as Item;
+  const html = upNext([past], ["BBCA"], "2026-09-01");
+  assert.match(html, /Counting from 1 Sep, which is in the past/);
+  assert.match(html, /<span class="done"[^>]*>happened<\/span>/);
+  // A date with nothing says why, in terms of the date and not of today.
+  assert.match(upNext([], [], "2026-09-01"), /in the 90 days from 1 Sep\. Dates are only on record once an issuer publishes them/);
+  assert.match(upNext([], [], todayIso()), /in the next 90 days\./);
 });

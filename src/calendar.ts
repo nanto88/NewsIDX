@@ -384,13 +384,28 @@ export function pulseOver(
 /**
  * Everything the issuers have dated ahead for the selected names across the
  * horizon: the list the agenda page opens with.
+ *
+ * `from` is the date the list counts forward from -- today, or a calendar date
+ * the reader picked. `now` is the real today. A picked date in the past would
+ * otherwise show nothing at all, because everything dated after it has since
+ * stopped being "scheduled" and become a fact. So for a past `from`, the
+ * corporate actions that WERE ahead on that date are kept, as what they turned
+ * out to be: dated rows (dividends, meetings, splits) between `from` and `now`.
+ * Never news, filings or suspensions -- those were not dated ahead of anything.
  */
-export function upcoming(con: Database, symbols: string[], today: string): Item[] {
-  const to = shift(today, HORIZON_DAYS);
+const DATED_KINDS = new Set(["exdiv", "agm", "split"]);
+
+export function upcoming(con: Database, symbols: string[], from: string, now: string = from): Item[] {
+  const to = shift(from, HORIZON_DAYS);
+  const since = from < now;
   return attachDrops(
     con,
-    eventsInRange(con, today, to, symbols).filter((r) => r.class === "scheduled").map(toItem),
-    today
+    eventsInRange(con, from, to, symbols)
+      .filter(
+        (r) => r.class === "scheduled" || (since && r.class === "fact" && DATED_KINDS.has(r.kind) && r.date < now)
+      )
+      .map(toItem),
+    from
   ).sort((a, b) => (a.date ?? "").localeCompare(b.date ?? ""));
 }
 

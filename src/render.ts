@@ -358,20 +358,24 @@ export const STYLE = `
      between them, instead of two blocks stacked. Without script both slides
      simply stack; with it, one shows at a time and the arrows slide between.
      A calendar day swaps the whole panel and a second click on it swaps back. */
-  .feed{position:relative}
-  .feed-nav{display:none;position:absolute;top:20px;right:0;align-items:center;gap:4px;height:26px}
+  /* clip, not hidden: the slide-in starts 28px off to the side, and that must
+     never widen the page on a phone, even for the frames it is travelling. */
+  .feed{position:relative;overflow-x:clip}
+  .feed-nav{display:none;align-items:center;gap:4px}
   .js .feed-nav{display:flex}
   .feed-arrow{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:var(--surface);
               color:var(--text-muted);font:600 16px/1 var(--font-ui);cursor:pointer;padding:0}
   .feed-arrow:hover{color:var(--text);border-color:var(--border-strong)}
   .feed-pos{font-size:12px;color:var(--text-muted);min-width:34px;text-align:center}
-  .feed .slide > .sh:first-child{margin-top:20px;padding-right:96px}
+  .feed .slide > .sh:first-child{margin-top:20px}
   .js .feed .slide{display:none}
   .js .feed .slide.on{display:block}
   @keyframes feed-r{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
   @keyframes feed-l{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
-  .feed .slide.in-r{animation:feed-r .24s var(--ease)}
-  .feed .slide.in-l{animation:feed-l .24s var(--ease)}
+  /* Only what is under the heading slides: the arrows live in the heading row,
+     and a button that moves away from the cursor on every press is a bad one. */
+  .feed .slide.in-r > :not(:first-child){animation:feed-r .24s var(--ease)}
+  .feed .slide.in-l > :not(:first-child){animation:feed-l .24s var(--ease)}
   .sh h2:focus{outline:none}
   .cellwrap > a.picked > .cell{box-shadow:0 0 0 2px var(--primary);border-color:var(--primary)}
   .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
@@ -394,6 +398,7 @@ export const STYLE = `
   .nx tbody tr:hover td{background:var(--surface-2)}
   .nx .r{text-align:right;font-family:var(--font-mono);font-variant-numeric:tabular-nums;white-space:nowrap}
   .nx .when{font-family:var(--font-mono);font-size:12px;white-space:nowrap}
+  .nx .done{font-size:11px;color:var(--text-muted);border:1px solid var(--border);border-radius:999px;padding:0 6px;margin-left:4px}
   .nx .soon{color:var(--alert);font-weight:600}
   .nx .tickerlink{display:inline-block;padding:5px 0}
   .nx .more td{font-size:12px;color:var(--text-muted);text-align:center;white-space:normal}
@@ -1096,8 +1101,7 @@ ${s.mock ? `<div class="mock"><b>MOCK_MODE</b> · fixture data, no API key, no n
         sl.classList.toggle('on', k === i);
         if (k === i && dir) sl.classList.add(dir < 0 ? 'in-l' : 'in-r');
       });
-      var pos = feed.querySelector('.feed-pos');
-      if (pos) pos.textContent = (i + 1) + ' / ' + n;
+      feed.querySelectorAll('.feed-pos').forEach(function (pos) { pos.textContent = (i + 1) + ' / ' + n; });
       feed.querySelectorAll('.feed-arrow').forEach(function (b) {
         var to = (i + Number(b.dataset.slide) + n) % n;
         b.setAttribute('aria-label', (Number(b.dataset.slide) < 0 ? 'Previous: ' : 'Next: ') + slides[to].dataset.title);
@@ -1830,12 +1834,18 @@ function boardAbout(b: Board): string {
  * this feed ran the story, which is a floor on attention paid and says nothing
  * at all about how many people read it.
  */
-function attentionSection(a: Attention, watchlist: string[]): string {
-  if (!a.considered) return "";
+function attentionSection(a: Attention, watchlist: string[], nav = ""): string {
+  // No stories in range still gets its heading, because the heading row is
+  // where the slider's arrows live: a blank slide with no arrows would strand
+  // the reader on it.
+  if (!a.considered) {
+    return `${head("Needs attention", { end: nav })}
+      <div class="empty">No stories on record in this range.</div>`;
+  }
   const w = watchlist.length ? `&w=${encodeURIComponent(watchlist.join(","))}` : "";
 
   if (!a.rows.length) {
-    return `${head("Needs attention")}
+    return `${head("Needs attention", { end: nav })}
       <div class="empty">None of the ${a.considered} stor${a.considered === 1 ? "y" : "ies"} in this
       range was carried by a second source or landed near a dated event. Nothing here needs
       looking at before the rest of the month does.</div>`;
@@ -1948,6 +1958,7 @@ function attentionSection(a: Attention, watchlist: string[]): string {
     .join("");
 
   return `${head("Needs attention", {
+      end: nav,
       sub: `${esc(fmtShort(a.from))}–${esc(fmtShort(a.to))} · ${a.rows.length} of ${a.considered}`,
       info: info(
         "i-attention",
@@ -1973,7 +1984,7 @@ function attentionSection(a: Attention, watchlist: string[]): string {
  * "this month so far", a finished one is a recap, and a month that has not
  * started has nothing to report.
  */
-function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; price?: string }): string {
+function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; price?: string }, nav = ""): string {
   const today = todayIso();
   const future = p.from > today;
   const label = future
@@ -2005,7 +2016,7 @@ function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; pric
       .join("&");
 
   if (!p.topics.length && !p.total && !p.tag) {
-    return `${head(label, { id: "headlines" })}
+    return `${head(label, { id: "headlines", end: nav })}
       <div class="empty">${
         future
           ? "This month has not started — no news on record."
@@ -2016,7 +2027,7 @@ function pulseSection(p: Pulse, watchlist: string[], keep: { month: string; pric
   const counted = (s: "positive" | "negative" | "neutral") =>
     p.headlines.filter((h) => sentimentOf(h) === s).length;
 
-  return `${head(label, { id: "headlines", sub: `${esc(fmtShort(p.from))}–${esc(fmtShort(p.to))}` })}
+  return `${head(label, { id: "headlines", end: nav, sub: `${esc(fmtShort(p.from))}–${esc(fmtShort(p.to))}` })}
   <div class="pulse">
     ${
       p.total
@@ -2312,7 +2323,9 @@ export function upNext(items: Item[], watchlist: string[], today: string): strin
       <td class="when">${esc(when(i))}</td>
       <td class="r${d < 7 ? " soon" : ""}">${d}d</td>
       <td>${tickerCell(i, watchlist)}</td>
-      <td title="${esc(i.title)}">${esc(kindLabel(i.kind))}</td>
+      <td title="${esc(i.title)}">${esc(kindLabel(i.kind))}${
+        i.date! < todayIso() ? ` <span class="done" title="This date has passed: shown as it turned out">happened</span>` : ""
+      }</td>
       <td class="r" title="Ex-dividend only: dividend ÷ last close">${impact}</td>
     </tr>`;
   };
@@ -2326,7 +2339,9 @@ export function upNext(items: Item[], watchlist: string[], today: string): strin
           ? `<tr class="more"><td colspan="5">+${items.length - shown.length} more in the 90 days — each ticker page carries its full list</td></tr>`
           : ""
       }</tbody></table></div>`
-    : `<div class="empty">Nothing dated for ${watchlist.length ? "these companies" : "the market"} in the next 90 days.</div>`;
+    : `<div class="empty">Nothing dated by an issuer for ${watchlist.length ? "these companies" : "the market"} ${
+        today === todayIso() ? "in the next 90 days" : `in the 90 days from ${esc(fmtShort(today))}`
+      }.${today === todayIso() ? "" : " Dates are only on record once an issuer publishes them."}</div>`;
 
   // Anchored when a calendar date has moved the list off today. The export
   // follows it, so the file is the table you are looking at.
@@ -2344,6 +2359,11 @@ export function upNext(items: Item[], watchlist: string[], today: string): strin
       }${items.length ? `<a class="nx-csv" href="${esc(csv)}" download>Download CSV</a>` : ""}`,
     })}
     ${kpis}
+    ${
+      anchored && today < todayIso()
+        ? `<p class="note">Counting from ${esc(fmtShort(today))}, which is in the past: the dividends, meetings and splits that were ahead then are listed as they turned out.</p>`
+        : ""
+    }
     ${table}
     ${
       quiet.length
@@ -2528,6 +2548,14 @@ export function renderMonth(
   // server picked (priceNote), which should not become the reader's choice.
   const pricePin = opts.priceSymbol && !opts.priceNote ? `&price=${encodeURIComponent(opts.priceSymbol)}` : "";
   const tag = opts.pulse.tag;
+  // The slider's arrows. Each slide carries its own copy in its heading row,
+  // so they align with the title by flex instead of by a pixel offset, and a
+  // script keeps every copy's "n / 2" in step.
+  const feedNav = `<span class="feed-nav" role="group" aria-label="Switch panel">
+      <button type="button" class="feed-arrow" data-slide="-1" aria-label="Previous: Headlines">‹</button>
+      <span class="feed-pos mono" aria-live="polite">1 / 2</span>
+      <button type="button" class="feed-arrow" data-slide="1" aria-label="Next: Headlines">›</button>
+    </span>`;
   return page({
     title: "NewsIDX Agenda",
     active: "agenda",
@@ -2589,13 +2617,8 @@ export function renderMonth(
     </section>
     </div><div class="dash-col">
     <section class="dash-feed"><div class="feed">
-      <div class="feed-nav" role="group" aria-label="Switch panel">
-        <button type="button" class="feed-arrow" data-slide="-1" aria-label="Previous: Headlines">‹</button>
-        <span class="feed-pos mono" aria-live="polite">1 / 2</span>
-        <button type="button" class="feed-arrow" data-slide="1" aria-label="Next: Headlines">›</button>
-      </div>
-      <div class="slide on" data-title="Needs attention">${attentionSection(opts.attention, watchlist)}</div>
-      <div class="slide" data-title="Headlines">${pulseSection(opts.pulse, watchlist, { month: ym, price: opts.priceSymbol ?? undefined })}</div>
+      <div class="slide on" data-title="Needs attention">${attentionSection(opts.attention, watchlist, feedNav)}</div>
+      <div class="slide" data-title="Headlines">${pulseSection(opts.pulse, watchlist, { month: ym, price: opts.priceSymbol ?? undefined }, feedNav)}</div>
     </div></section>
     </div></div>`,
   });
