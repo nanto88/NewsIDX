@@ -1,16 +1,12 @@
 <!-- Classification: PUBLIC -->
 # NewsIDX
 
-### See what is coming for your IDX stocks before the price moves
+In fast-moving markets, timing is everything. 
+The retail investors usually notice the dividends, earnings, and corporate actions after the price has already reacted. 
 
-Most people find out about a stock event too late. You open your app and the price has already
-jumped or dropped. The dividend went ex yesterday. The shareholder meeting was last week. Three
-of your companies reported in the same week, and you only noticed the one that moved.
-
-NewsIDX is a personal project that fixes this. It is a **news-based market view for the
-Indonesian stock exchange (IDX)**. It shows a 90 day calendar of events, but only for the
-companies you own, together with the news about them.
-
+**NewsIDX** is a **news-driven market dashboard for the Indonesian Stock Exchange (IDX)** designed to close that information gap. 
+By centralizing corporate actions, earnings schedules, and breaking market sentiment into a single structured timeline, 
+NewsIDX gives you a proactive view of the market before the charts move.
 It is powered by two things:
 
 * **Sectors API** for the market data: prices, dividends, meetings, earnings and news.
